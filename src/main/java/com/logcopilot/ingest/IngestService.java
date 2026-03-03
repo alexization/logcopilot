@@ -66,7 +66,12 @@ public class IngestService {
 		if (request.events() == null || request.events().isEmpty() || request.events().size() > 5000) {
 			throw new ValidationException("events size must be between 1 and 5000");
 		}
-		request.events().forEach(this::validateEvent);
+		for (CanonicalLogEvent event : request.events()) {
+			if (event == null) {
+				throw new ValidationException("events must not contain null items");
+			}
+			validateEvent(event);
+		}
 	}
 
 	private void validateEvent(CanonicalLogEvent event) {

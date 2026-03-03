@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -54,8 +55,27 @@ public class IngestController {
 	}
 
 	private IngestService.IngestEventsRequest toServiceRequest(IngestEventsRequest request) {
-		List<IngestService.CanonicalLogEvent> events = request.events().stream()
-			.map(event -> new IngestService.CanonicalLogEvent(
+		return new IngestService.IngestEventsRequest(
+			request.projectId(),
+			request.source(),
+			request.batchId(),
+			toServiceEvents(request.events())
+		);
+	}
+
+	private List<IngestService.CanonicalLogEvent> toServiceEvents(List<CanonicalLogEventRequest> eventRequests) {
+		if (eventRequests == null) {
+			return null;
+		}
+
+		List<IngestService.CanonicalLogEvent> events = new ArrayList<>();
+		for (CanonicalLogEventRequest event : eventRequests) {
+			if (event == null) {
+				events.add(null);
+				continue;
+			}
+
+			events.add(new IngestService.CanonicalLogEvent(
 				event.eventId(),
 				event.timestamp(),
 				event.service(),
@@ -65,15 +85,10 @@ public class IngestController {
 				event.errorCode(),
 				event.stackTrace(),
 				event.attributes()
-			))
-			.toList();
+			));
+		}
 
-		return new IngestService.IngestEventsRequest(
-			request.projectId(),
-			request.source(),
-			request.batchId(),
-			events
-		);
+		return events;
 	}
 
 	private IngestAcceptedResponse toResponse(IngestService.IngestAcceptedData accepted) {
