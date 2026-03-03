@@ -3,6 +3,7 @@ package com.logcopilot.incident;
 import com.logcopilot.common.api.ApiMeta;
 import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.NotFoundException;
+import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.incident.domain.IncidentDetail;
 import com.logcopilot.incident.domain.IncidentListResult;
 import com.logcopilot.incident.domain.IncidentSummary;
@@ -76,12 +77,15 @@ public class IncidentController {
 		@RequestBody(required = false) ReanalyzeRequest request
 	) {
 		bearerTokenValidator.validate(authorization);
+		String reason = request == null ? null : request.reason();
+		validateReanalyzeReason(reason);
+
 		IncidentDetail detail = incidentService.getIncident(incidentId);
 		validateProjectExists(detail.projectId());
 
 		ReanalyzeAcceptedResult accepted = incidentService.reanalyzeIncident(
 			incidentId,
-			request == null ? null : request.reason()
+			reason
 		);
 		return ResponseEntity.accepted().body(new ReanalyzeResponse(accepted));
 	}
@@ -89,6 +93,12 @@ public class IncidentController {
 	private void validateProjectExists(String projectId) {
 		if (!projectService.existsById(projectId)) {
 			throw new NotFoundException("Project not found");
+		}
+	}
+
+	private void validateReanalyzeReason(String reason) {
+		if (reason != null && reason.length() > 500) {
+			throw new ValidationException("reason must be at most 500 characters");
 		}
 	}
 

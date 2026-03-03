@@ -91,6 +91,23 @@ class IncidentControllerTest {
 			.andExpect(jsonPath("$.data.job_id").value("job-1"));
 	}
 
+	@Test
+	@DisplayName("IncidentController는 reason 길이가 500자를 초과하면 422를 반환한다")
+	void reanalyzeIncidentReturns422WhenReasonTooLong() throws Exception {
+		String reason = "a".repeat(501);
+
+		mockMvc.perform(post("/v1/incidents/{incident_id}/reanalyze", "incident-1")
+				.header("Authorization", "Bearer token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\":\"" + reason + "\"}"))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("reason must be at most 500 characters"));
+
+		verify(incidentService, never()).getIncident("incident-1");
+		verify(incidentService, never()).reanalyzeIncident("incident-1", reason);
+	}
+
 	private IncidentDetail incidentDetail(String incidentId, String projectId, IncidentStatus status) {
 		return new IncidentDetail(
 			incidentId,

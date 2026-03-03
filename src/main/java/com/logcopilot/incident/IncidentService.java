@@ -41,10 +41,14 @@ public class IncidentService {
 
 		Map<String, List<CanonicalLogEvent>> eventsByService = new LinkedHashMap<>();
 		for (CanonicalLogEvent event : events) {
-			if (event == null || event.service() == null || event.service().isBlank()) {
+			if (event == null) {
 				continue;
 			}
-			eventsByService.computeIfAbsent(event.service(), ignored -> new ArrayList<>()).add(event);
+			String normalizedService = normalizeService(event.service());
+			if (normalizedService == null) {
+				continue;
+			}
+			eventsByService.computeIfAbsent(normalizedService, ignored -> new ArrayList<>()).add(event);
 		}
 
 		for (Map.Entry<String, List<CanonicalLogEvent>> entry : eventsByService.entrySet()) {
@@ -184,6 +188,17 @@ public class IncidentService {
 		} catch (NumberFormatException ignored) {
 			return 0;
 		}
+	}
+
+	private String normalizeService(String service) {
+		if (service == null) {
+			return null;
+		}
+		String trimmed = service.trim();
+		if (trimmed.isEmpty()) {
+			return null;
+		}
+		return trimmed.toLowerCase(Locale.ROOT);
 	}
 
 	private TimestampRange computeTimestampRange(List<CanonicalLogEvent> events) {

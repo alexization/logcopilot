@@ -38,6 +38,21 @@ class IncidentServiceTest {
 	}
 
 	@Test
+	@DisplayName("IncidentService는 service 값을 소문자로 정규화해 집계한다")
+	void recordIngestedEventsNormalizesServiceNameCase() {
+		incidentService.recordIngestedEvents("project-1", List.of(
+			event("evt-1", "2026-03-03T03:00:00Z", "API", "error", "api upper"),
+			event("evt-2", "2026-03-03T03:00:30Z", "api", "warn", "api lower")
+		));
+
+		IncidentListResult result = incidentService.list("project-1", null, null, null, null);
+
+		assertThat(result.data()).hasSize(1);
+		assertThat(result.data().get(0).service()).isEqualTo("api");
+		assertThat(result.data().get(0).eventCount()).isEqualTo(2);
+	}
+
+	@Test
 	@DisplayName("IncidentService는 cursor/limit으로 incident 목록을 페이지네이션한다")
 	void listIncidentsPaginatesWithCursorAndLimit() {
 		incidentService.recordIngestedEvents("project-1", List.of(

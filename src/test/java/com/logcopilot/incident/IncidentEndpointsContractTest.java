@@ -89,6 +89,23 @@ class IncidentEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("GET /v1/projects/{project_id}/incidents 는 service 대소문자를 구분하지 않고 집계한다")
+	void listIncidentsAggregatesServicesCaseInsensitively() throws Exception {
+		String projectId = createProjectId("incident-service-normalize");
+		ingestEvents(projectId, List.of(
+			event("evt-1", "2026-03-03T03:00:00Z", "API", "error", "api upper"),
+			event("evt-2", "2026-03-03T03:00:30Z", "api", "warn", "api lower")
+		));
+
+		mockMvc.perform(get("/v1/projects/{project_id}/incidents", projectId)
+				.header("Authorization", "Bearer incident-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.length()").value(1))
+			.andExpect(jsonPath("$.data[0].service").value("api"))
+			.andExpect(jsonPath("$.data[0].event_count").value(2));
+	}
+
+	@Test
 	@DisplayName("GET /v1/projects/{project_id}/incidents 는 인증 누락 시 401을 반환한다")
 	void listIncidentsRejectsMissingBearerToken() throws Exception {
 		String projectId = createProjectId("incident-auth");
@@ -191,6 +208,25 @@ class IncidentEndpointsContractTest {
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.error.code").value("not_found"))
 			.andExpect(jsonPath("$.error.message").value("Incident not found"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/incidents/{incident_id}/reanalyze 는 reason이 500자를 초과하면 422를 반환한다")
+	void reanalyzeIncidentReturns422WhenReasonTooLong() throws Exception {
+		String projectId = createProjectId("incident-reanalyze-reason-limit");
+		ingestEvents(projectId, List.of(
+			event("evt-1", "2026-03-03T03:00:00Z", "api", "error", "first error")
+		));
+		String incidentId = firstIncidentId(projectId);
+		String reason = "a".repeat(501);
+
+		mockMvc.perform(post("/v1/incidents/{incident_id}/reanalyze", incidentId)
+				.header("Authorization", "Bearer incident-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\":\"" + reason + "\"}"))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("reason must be at most 500 characters"));
 	}
 
 	private String createProjectId(String namePrefix) throws Exception {
