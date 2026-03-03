@@ -74,8 +74,8 @@ public class LlmAccountController {
 	public OAuthCallbackResponse callbackLlmOAuth(
 		@PathVariable("project_id") String projectId,
 		@PathVariable("provider") String provider,
-		@RequestParam("code") String code,
-		@RequestParam("state") String state
+		@RequestParam(value = "code", required = false) String code,
+		@RequestParam(value = "state", required = false) String state
 	) {
 		LlmAccountService.OAuthCallbackResult result = llmAccountService.callbackOAuth(
 			projectId,

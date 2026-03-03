@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -20,6 +21,7 @@ import java.util.UUID;
 @Service
 public class LlmAccountService {
 
+	private static final Duration OAUTH_STATE_TTL = Duration.ofMinutes(10);
 	private final ProjectService projectService;
 	private final Map<String, LinkedHashMap<String, AccountState>> accountsByProject = new HashMap<>();
 	private final Map<String, Map<String, String>> apiKeyAccountIdByProjectProvider = new HashMap<>();
@@ -93,6 +95,7 @@ public class LlmAccountService {
 	public synchronized OAuthStartResult startOAuth(String projectId, String providerInput) {
 		requireProjectForScopedRequest(projectId);
 		String provider = validateProviderForBadRequest(providerInput);
+		purgeExpiredOAuthStates();
 
 		String state = UUID.randomUUID().toString();
 		oauthStateByValue.put(state, new OAuthState(projectId, provider, Instant.now()));
@@ -111,11 +114,18 @@ public class LlmAccountService {
 		String provider = validateProviderForBadRequest(providerInput);
 		validateCode(code);
 		validateState(state);
+		purgeExpiredOAuthStates();
+		Instant now = Instant.now();
 
 		OAuthState started = oauthStateByValue.get(state);
-		if (started == null
-			|| !started.projectId().equals(projectId)
-			|| !started.provider().equals(provider)) {
+		if (started == null) {
+			throw new ConflictException("Invalid or expired oauth state");
+		}
+		if (isExpired(started, now)) {
+			oauthStateByValue.remove(state);
+			throw new ConflictException("Invalid or expired oauth state");
+		}
+		if (!started.projectId().equals(projectId) || !started.provider().equals(provider)) {
 			throw new ConflictException("Invalid or expired oauth state");
 		}
 		oauthStateByValue.remove(state);
@@ -268,10 +278,23 @@ public class LlmAccountService {
 			if (!uri.isAbsolute() || uri.getHost() == null) {
 				throw new ValidationException("base_url must be a valid URI");
 			}
+			String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+			if (!"http".equals(scheme) && !"https".equals(scheme)) {
+				throw new ValidationException("base_url must be a valid URI");
+			}
 		} catch (URISyntaxException exception) {
 			throw new ValidationException("base_url must be a valid URI");
 		}
 		return trimmed;
+	}
+
+	private void purgeExpiredOAuthStates() {
+		Instant now = Instant.now();
+		oauthStateByValue.entrySet().removeIf(entry -> isExpired(entry.getValue(), now));
+	}
+
+	private boolean isExpired(OAuthState state, Instant now) {
+		return state.createdAt().isBefore(now.minus(OAUTH_STATE_TTL));
 	}
 
 	private void validateCode(String code) {

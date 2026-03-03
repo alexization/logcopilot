@@ -170,6 +170,54 @@ class LlmAccountEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("GET /v1/projects/{project_id}/llm-oauth/{provider}/callback 은 code/state 공백 시 400을 반환한다")
+	void callbackLlmOAuthReturns400WhenCodeOrStateBlank() throws Exception {
+		String projectId = createProjectId("llm-oauth-callback-blank");
+		MvcResult started = mockMvc.perform(post("/v1/projects/{project_id}/llm-oauth/{provider}/start", projectId, "openai")
+				.header("Authorization", "Bearer llm-token"))
+			.andExpect(status().isOk())
+			.andReturn();
+		String state = jsonValue(started, "/data/state");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/llm-oauth/{provider}/callback", projectId, "openai")
+				.queryParam("code", " ")
+				.queryParam("state", state))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("code must not be blank"));
+
+		mockMvc.perform(get("/v1/projects/{project_id}/llm-oauth/{provider}/callback", projectId, "openai")
+				.queryParam("code", "oauth-code-1")
+				.queryParam("state", " "))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("state must not be blank"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/llm-oauth/{provider}/callback 은 query param 누락 시 400 표준 에러를 반환한다")
+	void callbackLlmOAuthReturns400WithStandardErrorWhenQueryParamMissing() throws Exception {
+		String projectId = createProjectId("llm-oauth-callback-missing");
+		MvcResult started = mockMvc.perform(post("/v1/projects/{project_id}/llm-oauth/{provider}/start", projectId, "openai")
+				.header("Authorization", "Bearer llm-token"))
+			.andExpect(status().isOk())
+			.andReturn();
+		String state = jsonValue(started, "/data/state");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/llm-oauth/{provider}/callback", projectId, "openai")
+				.queryParam("state", state))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("code must not be blank"));
+
+		mockMvc.perform(get("/v1/projects/{project_id}/llm-oauth/{provider}/callback", projectId, "openai")
+				.queryParam("code", "oauth-code-1"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("state must not be blank"));
+	}
+
+	@Test
 	@DisplayName("GET /v1/projects/{project_id}/llm-accounts 는 계정 목록을 반환한다")
 	void listLlmAccountsReturnsAccountList() throws Exception {
 		String projectId = createProjectId("llm-list");

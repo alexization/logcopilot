@@ -90,6 +90,24 @@ class LlmAccountServiceTest {
 	}
 
 	@Test
+	@DisplayName("LlmAccountService는 사용된 OAuth state를 재사용하면 ConflictException을 던진다")
+	void callbackOAuthRejectsReusedState() {
+		ProjectDto project = projectService.create("oauth-reuse-project", "prod");
+		LlmAccountService.OAuthStartResult start = llmAccountService.startOAuth(project.id(), "openai");
+
+		llmAccountService.callbackOAuth(project.id(), "openai", "oauth-code-1", start.state());
+
+		assertThatThrownBy(() -> llmAccountService.callbackOAuth(
+			project.id(),
+			"openai",
+			"oauth-code-2",
+			start.state()
+		))
+			.isInstanceOf(ConflictException.class)
+			.hasMessage("Invalid or expired oauth state");
+	}
+
+	@Test
 	@DisplayName("LlmAccountService는 존재하지 않는 프로젝트 조회 시 NotFoundException을 던진다")
 	void listThrowsNotFoundWhenProjectMissing() {
 		assertThatThrownBy(() -> llmAccountService.list("missing-project"))
@@ -177,6 +195,25 @@ class LlmAccountServiceTest {
 				"sk-1",
 				"gpt-4o-mini",
 				"not-a-uri"
+			)
+		))
+			.isInstanceOf(ValidationException.class)
+			.hasMessage("base_url must be a valid URI");
+	}
+
+	@Test
+	@DisplayName("LlmAccountService는 API key 요청의 base_url 스킴이 http/https가 아니면 ValidationException을 던진다")
+	void upsertApiKeyThrowsWhenBaseUrlSchemeUnsupported() {
+		ProjectDto project = projectService.create("uri-scheme-project", "prod");
+
+		assertThatThrownBy(() -> llmAccountService.upsertApiKey(
+			project.id(),
+			new LlmAccountService.ApiKeyUpsertCommand(
+				"openai",
+				"main",
+				"sk-1",
+				"gpt-4o-mini",
+				"ftp://api.openai.com/v1"
 			)
 		))
 			.isInstanceOf(ValidationException.class)
