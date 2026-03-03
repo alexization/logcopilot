@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,6 +53,48 @@ class PolicyServiceTest {
 	}
 
 	@Test
+	@DisplayName("PolicyService는 redaction rule 200개를 허용한다")
+	void updateRedactionPolicyAllowsMaxRules() {
+		ProjectDto project = projectService.create("policy-redaction-max", "prod");
+		List<PolicyService.RedactionRuleCommand> rules = IntStream.range(0, 200)
+			.mapToObj(index -> new PolicyService.RedactionRuleCommand(
+				"rule-" + index,
+				"token-" + index,
+				"[MASKED]"
+			))
+			.toList();
+
+		PolicyService.RedactionPolicyResult result = policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(true, rules)
+		);
+
+		assertThat(result.enabled()).isTrue();
+		assertThat(result.rulesCount()).isEqualTo(200);
+		assertThat(result.updatedAt()).isNotNull();
+	}
+
+	@Test
+	@DisplayName("PolicyService는 redaction rule 201개를 거부한다")
+	void updateRedactionPolicyRejectsOverMaxRules() {
+		ProjectDto project = projectService.create("policy-redaction-over-max", "prod");
+		List<PolicyService.RedactionRuleCommand> rules = IntStream.range(0, 201)
+			.mapToObj(index -> new PolicyService.RedactionRuleCommand(
+				"rule-" + index,
+				"token-" + index,
+				"[MASKED]"
+			))
+			.toList();
+
+		assertThatThrownBy(() -> policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(true, rules)
+		))
+			.isInstanceOf(BadRequestException.class)
+			.hasMessage("rules must contain at most 200 items");
+	}
+
+	@Test
 	@DisplayName("PolicyService는 존재하지 않는 프로젝트 요청이면 BadRequestException을 던진다")
 	void updatePolicyThrowsWhenProjectMissing() {
 		assertThatThrownBy(() -> policyService.updateExportPolicy(
@@ -72,6 +115,36 @@ class PolicyServiceTest {
 			new PolicyService.RedactionPolicyCommand(
 				true,
 				List.of(new PolicyService.RedactionRuleCommand("redos", "(a+)+", "[MASKED]"))
+			)
+		))
+			.isInstanceOf(BadRequestException.class)
+			.hasMessage("rules[0].pattern contains disallowed nested quantifier");
+
+		assertThatThrownBy(() -> policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(
+				true,
+				List.of(new PolicyService.RedactionRuleCommand("redos", "(a?)+", "[MASKED]"))
+			)
+		))
+			.isInstanceOf(BadRequestException.class)
+			.hasMessage("rules[0].pattern contains disallowed nested quantifier");
+
+		assertThatThrownBy(() -> policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(
+				true,
+				List.of(new PolicyService.RedactionRuleCommand("redos", "(a{1,3})+", "[MASKED]"))
+			)
+		))
+			.isInstanceOf(BadRequestException.class)
+			.hasMessage("rules[0].pattern contains disallowed nested quantifier");
+
+		assertThatThrownBy(() -> policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(
+				true,
+				List.of(new PolicyService.RedactionRuleCommand("redos", "(a+){2}", "[MASKED]"))
 			)
 		))
 			.isInstanceOf(BadRequestException.class)

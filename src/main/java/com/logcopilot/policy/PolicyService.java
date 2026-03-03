@@ -18,7 +18,9 @@ public class PolicyService {
 
 	private static final int MAX_REDACTION_RULES = 200;
 	private static final Pattern NESTED_QUANTIFIER_PATTERN =
-		Pattern.compile("\\((?:[^()\\\\]|\\\\.)*[+*](?:[^()\\\\]|\\\\.)*\\)[+*]");
+		Pattern.compile(
+			"\\((?:[^()\\\\]|\\\\.)*(?:[+*?]|\\{\\d+(?:,\\d*)?\\})(?:[^()\\\\]|\\\\.)*\\)(?:[+*?]|\\{\\d+(?:,\\d*)?\\})"
+		);
 
 	private final ProjectService projectService;
 	private final Map<String, ExportPolicyState> exportPolicyByProject = new HashMap<>();

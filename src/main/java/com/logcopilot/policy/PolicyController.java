@@ -32,7 +32,7 @@ public class PolicyController {
 	public ExportPolicyResponse updateExportPolicy(
 		@PathVariable("project_id") String projectId,
 		@RequestHeader(value = "Authorization", required = false) String authorization,
-		@RequestBody ExportPolicyRequest request
+		@RequestBody(required = false) ExportPolicyRequest request
 	) {
 		bearerTokenValidator.validate(authorization);
 		if (request == null) {
@@ -50,7 +50,7 @@ public class PolicyController {
 	public RedactionPolicyResponse updateRedactionPolicy(
 		@PathVariable("project_id") String projectId,
 		@RequestHeader(value = "Authorization", required = false) String authorization,
-		@RequestBody RedactionPolicyRequest request
+		@RequestBody(required = false) RedactionPolicyRequest request
 	) {
 		bearerTokenValidator.validate(authorization);
 		if (request == null) {
