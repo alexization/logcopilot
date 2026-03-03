@@ -1,0 +1,339 @@
+# Instincts generated from https://github.com/alexization/logcopilot
+# Generated: 2026-03-03T02:25:10.472Z
+# Version: 2.0
+
+---
+id: logcopilot-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Commit Length
+
+## Action
+
+Keep commit messages concise (under 50 characters)
+
+## Evidence
+
+- Average commit message length: 36 chars
+- Based on 3 commits
+
+---
+id: logcopilot-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: logcopilot-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Export Style
+
+## Action
+
+Prefer mixed exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: mixed
+
+---
+id: logcopilot-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: logcopilot-workflow-github-template-maintenance
+trigger: "when doing github template maintenance"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Workflow Github Template Maintenance
+
+## Action
+
+Follow the github-template-maintenance workflow:
+1. Update .github/ISSUE_TEMPLATE files
+2. Modify workflow documentation in docs/workflow/
+3. Update related documentation references
+4. Run verification tests
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: .github/ISSUE_TEMPLATE/*.md, docs/workflow/github-delivery.md
+
+---
+id: logcopilot-workflow-documentation-structure-changes
+trigger: "when doing documentation structure changes"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Workflow Documentation Structure Changes
+
+## Action
+
+Follow the documentation-structure-changes workflow:
+1. Modify docs/ directory structure
+2. Update workflow documentation files
+3. Update main documentation index files
+4. Run build verification
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: docs/workflow/*.md, docs/README.md, AGENTS.md
+
+---
+id: logcopilot-java-class-naming
+trigger: "When creating a new Java class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Java Class Naming
+
+## Action
+
+Use PascalCase for class names
+
+## Evidence
+
+- Pattern observed in Java codebase structure
+- Standard Java naming conventions in src/main
+
+---
+id: logcopilot-java-method-naming
+trigger: "When creating Java methods or variables"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Java Method Naming
+
+## Action
+
+Use camelCase for method and variable names
+
+## Evidence
+
+- Pattern observed in Java codebase structure
+- Standard Java naming conventions in src/main
+
+---
+id: logcopilot-java-constants
+trigger: "When defining Java constants"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Java Constants
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern observed in Java codebase structure
+- Standard Java naming conventions
+
+---
+id: logcopilot-test-separation
+trigger: "When writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Test Separation
+
+## Action
+
+Place test files in src/test directory separate from main code
+
+## Evidence
+
+- Separate test location in architecture
+- Standard Gradle project structure with src/main and src/test
+
+---
+id: logcopilot-commit-prefix
+trigger: "When making a commit"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Commit Prefix
+
+## Action
+
+Use semantic prefixes like 'docs:', 'init:' followed by descriptive message
+
+## Evidence
+
+- docs(github): [#1] 제목 접두어에서 '작업 단위' 문구 제거
+- init: initial project
+- docs(workflow): [#1] T-01 문서/에이전트 워크플로우 체계 정립
+
+---
+id: logcopilot-commit-issue-reference
+trigger: "When committing changes related to an issue"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Commit Issue Reference
+
+## Action
+
+Include issue reference in brackets like [#1] in the commit message
+
+## Evidence
+
+- docs(github): [#1] 제목 접두어에서 '작업 단위' 문구 제거
+- docs(workflow): [#1] T-01 문서/에이전트 워크플로우 체계 정립
+
+---
+id: logcopilot-github-template-workflow
+trigger: "When modifying GitHub workflow policies or templates"
+confidence: 0.75
+domain: workflow
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Github Template Workflow
+
+## Action
+
+Update .github/ISSUE_TEMPLATE files and sync with docs/workflow/github-delivery.md
+
+## Evidence
+
+- github-template-maintenance workflow pattern
+- Frequency of 2x/month
+- Files involved: .github/ISSUE_TEMPLATE/*.md, docs/workflow/github-delivery.md
+
+---
+id: logcopilot-docs-structure-workflow
+trigger: "When reorganizing documentation or updating workflow files"
+confidence: 0.7
+domain: workflow
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Docs Structure Workflow
+
+## Action
+
+Update docs/ directory structure and sync with AGENTS.md and docs/README.md
+
+## Evidence
+
+- documentation-structure-changes workflow pattern
+- Frequency of 2x/month
+- Files involved: docs/workflow/*.md, docs/README.md, AGENTS.md
+
+---
+id: logcopilot-single-package-structure
+trigger: "When organizing project structure"
+confidence: 0.9
+domain: architecture
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Single Package Structure
+
+## Action
+
+Maintain single-package layout with src/main and src/test separation
+
+## Evidence
+
+- Single-package type in folderStructure
+- srcLayout shows main/test separation
+- Gradle project structure
+
+---
+id: logcopilot-docs-folder-standard
+trigger: "When adding documentation"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Docs Folder Standard
+
+## Action
+
+Place documentation in docs/ folder following the established structure
+
+## Evidence
+
+- docs folder in commonFolders
+- Multiple workflow files reference docs/ structure
+- Documentation-focused commit patterns
+
