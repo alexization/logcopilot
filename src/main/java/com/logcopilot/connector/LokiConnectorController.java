@@ -1,8 +1,8 @@
 package com.logcopilot.connector;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.BadRequestException;
-import com.logcopilot.common.error.UnauthorizedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,9 +19,14 @@ import java.time.Instant;
 public class LokiConnectorController {
 
 	private final LokiConnectorService lokiConnectorService;
+	private final BearerTokenValidator bearerTokenValidator;
 
-	public LokiConnectorController(LokiConnectorService lokiConnectorService) {
+	public LokiConnectorController(
+		LokiConnectorService lokiConnectorService,
+		BearerTokenValidator bearerTokenValidator
+	) {
 		this.lokiConnectorService = lokiConnectorService;
+		this.bearerTokenValidator = bearerTokenValidator;
 	}
 
 	@PostMapping
@@ -30,7 +35,7 @@ public class LokiConnectorController {
 		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestBody LokiConnectorRequest request
 	) {
-		validateBearerToken(authorization);
+		bearerTokenValidator.validate(authorization);
 		validateRequestBody(request);
 
 		LokiConnectorService.UpsertResult result = lokiConnectorService.upsert(
@@ -68,7 +73,7 @@ public class LokiConnectorController {
 		@PathVariable("project_id") String projectId,
 		@RequestHeader(value = "Authorization", required = false) String authorization
 	) {
-		validateBearerToken(authorization);
+		bearerTokenValidator.validate(authorization);
 
 		LokiConnectorService.LokiTestResult result = lokiConnectorService.test(projectId);
 		return new LokiTestResponse(
@@ -79,17 +84,6 @@ public class LokiConnectorController {
 				result.message()
 			)
 		);
-	}
-
-	private void validateBearerToken(String authorization) {
-		if (authorization == null) {
-			throw new UnauthorizedException("Missing or invalid bearer token");
-		}
-
-		String[] parts = authorization.trim().split("\\s+", 2);
-		if (parts.length != 2 || !"bearer".equalsIgnoreCase(parts[0]) || parts[1].isBlank()) {
-			throw new UnauthorizedException("Missing or invalid bearer token");
-		}
 	}
 
 	public record LokiConnectorRequest(

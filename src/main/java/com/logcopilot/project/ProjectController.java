@@ -1,6 +1,6 @@
 package com.logcopilot.project;
 
-import com.logcopilot.common.error.UnauthorizedException;
+import com.logcopilot.common.auth.BearerTokenValidator;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,9 +17,14 @@ import java.util.List;
 public class ProjectController {
 
 	private final ProjectService projectService;
+	private final BearerTokenValidator bearerTokenValidator;
 
-	public ProjectController(ProjectService projectService) {
+	public ProjectController(
+		ProjectService projectService,
+		BearerTokenValidator bearerTokenValidator
+	) {
 		this.projectService = projectService;
+		this.bearerTokenValidator = bearerTokenValidator;
 	}
 
 	@PostMapping
@@ -27,7 +32,7 @@ public class ProjectController {
 		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestBody CreateProjectRequest request
 	) {
-		validateBearerToken(authorization);
+		bearerTokenValidator.validate(authorization);
 		ProjectDto project = projectService.create(request.name(), request.environment());
 		return ResponseEntity.status(HttpStatus.CREATED)
 			.body(new ProjectResponse(project));
@@ -37,19 +42,8 @@ public class ProjectController {
 	public ProjectListResponse listProjects(
 		@RequestHeader(value = "Authorization", required = false) String authorization
 	) {
-		validateBearerToken(authorization);
+		bearerTokenValidator.validate(authorization);
 		return new ProjectListResponse(projectService.list());
-	}
-
-	private void validateBearerToken(String authorization) {
-		if (authorization == null) {
-			throw new UnauthorizedException("Missing or invalid bearer token");
-		}
-
-		String[] parts = authorization.trim().split("\\s+", 2);
-		if (parts.length != 2 || !"bearer".equalsIgnoreCase(parts[0]) || parts[1].isBlank()) {
-			throw new UnauthorizedException("Missing or invalid bearer token");
-		}
 	}
 
 	public record CreateProjectRequest(
