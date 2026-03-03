@@ -3,6 +3,8 @@ package com.logcopilot.incident;
 import com.logcopilot.common.error.ConflictException;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.ingest.domain.CanonicalLogEvent;
+import com.logcopilot.incident.analyzer.IncidentAnalyzer;
+import com.logcopilot.incident.analyzer.IncidentReanalyzeCommand;
 import com.logcopilot.incident.domain.AnalysisReport;
 import com.logcopilot.incident.domain.Hypothesis;
 import com.logcopilot.incident.domain.IncidentDetail;
@@ -31,8 +33,13 @@ public class IncidentService {
 	private static final int DEFAULT_LIMIT = 50;
 	private static final int MAX_LIMIT = 200;
 
+	private final IncidentAnalyzer incidentAnalyzer;
 	private final Map<String, IncidentState> incidentsById = new LinkedHashMap<>();
 	private final Map<String, List<String>> incidentIdsByProject = new HashMap<>();
+
+	public IncidentService(IncidentAnalyzer incidentAnalyzer) {
+		this.incidentAnalyzer = incidentAnalyzer;
+	}
 
 	public synchronized void recordIngestedEvents(String projectId, List<CanonicalLogEvent> events) {
 		if (projectId == null || projectId.isBlank() || events == null || events.isEmpty()) {
@@ -135,7 +142,13 @@ public class IncidentService {
 			state.eventCount,
 			state.firstSeen,
 			state.lastSeen,
-			reanalyzedReport(state, reason)
+			incidentAnalyzer.analyze(new IncidentReanalyzeCommand(
+				state.id,
+				state.projectId,
+				state.service,
+				reason,
+				state.report
+			))
 		);
 		incidentsById.put(incidentId, updated);
 		return new ReanalyzeAcceptedResult(true, UUID.randomUUID().toString());
@@ -282,23 +295,6 @@ public class IncidentService {
 				"Check downstream dependency health"
 			),
 			List.of("Rule-based baseline report; LLM analysis not applied yet")
-		);
-	}
-
-	private AnalysisReport reanalyzedReport(IncidentState state, String reason) {
-		String normalizedReason = reason == null || reason.isBlank()
-			? "manual trigger"
-			: reason.trim();
-
-		return new AnalysisReport(
-			"Reanalysis started for incident " + state.id,
-			List.of(new Hypothesis(
-				"Incident requires deeper inspection",
-				0.6,
-				List.of("Reanalysis reason: " + normalizedReason)
-			)),
-			List.of("Collect additional logs around " + state.service),
-			List.of("Reanalysis job queued; final report will be updated asynchronously")
 		);
 	}
 

@@ -175,6 +175,52 @@ class IncidentEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("POST /v1/incidents/{incident_id}/reanalyze 는 LLM 계정이 있으면 LLM 분석 리포트를 생성한다")
+	void reanalyzeIncidentUsesLlmReportWhenAccountExists() throws Exception {
+		String projectId = createProjectId("incident-reanalyze-llm");
+		registerOpenAiLlmAccount(projectId);
+		ingestEvents(projectId, List.of(
+			event("evt-1", "2026-03-03T03:00:00Z", "api", "error", "first error")
+		));
+		String incidentId = firstIncidentId(projectId);
+
+		mockMvc.perform(post("/v1/incidents/{incident_id}/reanalyze", incidentId)
+				.header("Authorization", "Bearer incident-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\":\"new evidence\"}"))
+			.andExpect(status().isAccepted());
+
+		mockMvc.perform(get("/v1/incidents/{incident_id}", incidentId)
+				.header("Authorization", "Bearer incident-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.report.summary").value(org.hamcrest.Matchers.containsString("LLM-assisted")))
+			.andExpect(jsonPath("$.data.report.limitations[*]")
+				.value(org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("LLM"))));
+	}
+
+	@Test
+	@DisplayName("POST /v1/incidents/{incident_id}/reanalyze 는 LLM 계정이 없으면 fallback 리포트를 생성한다")
+	void reanalyzeIncidentUsesFallbackReportWhenLlmUnavailable() throws Exception {
+		String projectId = createProjectId("incident-reanalyze-fallback");
+		ingestEvents(projectId, List.of(
+			event("evt-1", "2026-03-03T03:00:00Z", "api", "error", "first error")
+		));
+		String incidentId = firstIncidentId(projectId);
+
+		mockMvc.perform(post("/v1/incidents/{incident_id}/reanalyze", incidentId)
+				.header("Authorization", "Bearer incident-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\":\"new evidence\"}"))
+			.andExpect(status().isAccepted());
+
+		mockMvc.perform(get("/v1/incidents/{incident_id}", incidentId)
+				.header("Authorization", "Bearer incident-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.report.limitations[*]")
+				.value(org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("fallback report generated"))));
+	}
+
+	@Test
 	@DisplayName("POST /v1/incidents/{incident_id}/reanalyze 는 진행 중 상태에서 409를 반환한다")
 	void reanalyzeIncidentReturns409WhenAlreadyInvestigating() throws Exception {
 		String projectId = createProjectId("incident-reanalyze-conflict");
@@ -274,6 +320,22 @@ class IncidentEndpointsContractTest {
 			  "environment": "%s"
 			}
 			""".formatted(name, environment);
+	}
+
+	private void registerOpenAiLlmAccount(String projectId) throws Exception {
+		mockMvc.perform(post("/v1/projects/{project_id}/llm-accounts/api-key", projectId)
+				.header("Authorization", "Bearer llm-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "provider": "openai",
+					  "label": "openai-main",
+					  "api_key": "sk-openai-1",
+					  "model": "gpt-4o-mini",
+					  "base_url": null
+					}
+					"""))
+			.andExpect(status().isCreated());
 	}
 
 	private String ingestEventsRequestBody(
