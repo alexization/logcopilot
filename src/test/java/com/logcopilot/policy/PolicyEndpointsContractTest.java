@@ -155,6 +155,28 @@ class PolicyEndpointsContractTest {
 			.andExpect(jsonPath("$.error.message").value("rules[0].pattern must be a valid regex"));
 	}
 
+	@Test
+	@DisplayName("PUT /v1/projects/{project_id}/policies/redaction 는 과도하게 긴 정규식이면 400을 반환한다")
+	void updateRedactionPolicyReturns400WhenPatternTooLong() throws Exception {
+		String projectId = createProjectId("policy-redaction-long-pattern");
+		String longPattern = "a".repeat(513);
+
+		mockMvc.perform(put("/v1/projects/{project_id}/policies/redaction", projectId)
+				.header("Authorization", "Bearer policy-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(redactionRequestBody(
+					true,
+					"""
+					[
+					  {"name":"long-pattern","pattern":"%s","replace_with":"[MASKED]"}
+					]
+					""".formatted(longPattern)
+				)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("rules[0].pattern must be at most 512 characters"));
+	}
+
 	private String createProjectId(String namePrefix) throws Exception {
 		String projectName = namePrefix + "-" + UUID.randomUUID();
 
