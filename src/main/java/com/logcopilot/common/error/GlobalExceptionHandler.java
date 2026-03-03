@@ -45,6 +45,11 @@ public class GlobalExceptionHandler {
 		return error(HttpStatus.BAD_GATEWAY, "bad_gateway", exception.getMessage());
 	}
 
+	@ExceptionHandler(NotImplementedException.class)
+	public ResponseEntity<ApiErrorResponse> handleNotImplemented(NotImplementedException exception) {
+		return error(HttpStatus.NOT_IMPLEMENTED, "not_implemented", exception.getMessage());
+	}
+
 	private ResponseEntity<ApiErrorResponse> error(HttpStatus status, String code, String message) {
 		return ResponseEntity.status(status)
 			.body(ApiErrorResponse.of(code, message));
