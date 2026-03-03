@@ -41,7 +41,12 @@ public class SystemController {
 	}
 
 	private void validateBearerToken(String authorization) {
-		if (authorization == null || !authorization.startsWith("Bearer ") || authorization.length() <= 7) {
+		if (authorization == null || !authorization.startsWith("Bearer ")) {
+			throw new UnauthorizedException("Missing or invalid bearer token");
+		}
+
+		String token = authorization.substring(7).trim();
+		if (token.isEmpty()) {
 			throw new UnauthorizedException("Missing or invalid bearer token");
 		}
 	}

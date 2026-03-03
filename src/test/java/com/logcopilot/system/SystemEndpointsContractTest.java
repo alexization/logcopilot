@@ -42,6 +42,15 @@ class SystemEndpointsContractTest {
 	}
 
 	@Test
+	void systemInfoRejectsBlankBearerToken() throws Exception {
+		mockMvc.perform(get("/v1/system/info")
+				.header("Authorization", "Bearer    "))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
 	void systemInfoReturnsRuntimeInfoWhenAuthorized() throws Exception {
 		mockMvc.perform(get("/v1/system/info")
 				.header("Authorization", "Bearer test-token"))
