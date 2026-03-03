@@ -1,5 +1,6 @@
 package com.logcopilot.system;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -18,6 +19,7 @@ class SystemEndpointsContractTest {
 	private MockMvc mockMvc;
 
 	@Test
+	@DisplayName("GET /healthz 는 200과 status=ok 를 반환한다")
 	void healthzReturnsOkStatus() throws Exception {
 		mockMvc.perform(get("/healthz"))
 			.andExpect(status().isOk())
@@ -25,6 +27,7 @@ class SystemEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("GET /readyz 는 200과 ready/checks 정보를 반환한다")
 	void readyzReturnsReadyStatusAndChecks() throws Exception {
 		mockMvc.perform(get("/readyz"))
 			.andExpect(status().isOk())
@@ -34,6 +37,7 @@ class SystemEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("GET /v1/system/info 는 Authorization 헤더가 없으면 401을 반환한다")
 	void systemInfoRejectsMissingBearerToken() throws Exception {
 		mockMvc.perform(get("/v1/system/info"))
 			.andExpect(status().isUnauthorized())
@@ -42,6 +46,7 @@ class SystemEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("GET /v1/system/info 는 공백 Bearer 토큰이면 401을 반환한다")
 	void systemInfoRejectsBlankBearerToken() throws Exception {
 		mockMvc.perform(get("/v1/system/info")
 				.header("Authorization", "Bearer    "))
@@ -51,6 +56,7 @@ class SystemEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("GET /v1/system/info 는 유효한 Bearer 형식에서 런타임 정보를 반환한다")
 	void systemInfoReturnsRuntimeInfoWhenAuthorized() throws Exception {
 		mockMvc.perform(get("/v1/system/info")
 				.header("Authorization", "Bearer test-token"))

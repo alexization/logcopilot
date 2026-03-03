@@ -14,4 +14,16 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
 			.body(ApiErrorResponse.of("unauthorized", exception.getMessage()));
 	}
+
+	@ExceptionHandler(BadRequestException.class)
+	public ResponseEntity<ApiErrorResponse> handleBadRequest(BadRequestException exception) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+			.body(ApiErrorResponse.of("bad_request", exception.getMessage()));
+	}
+
+	@ExceptionHandler(ConflictException.class)
+	public ResponseEntity<ApiErrorResponse> handleConflict(ConflictException exception) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+			.body(ApiErrorResponse.of("conflict", exception.getMessage()));
+	}
 }
