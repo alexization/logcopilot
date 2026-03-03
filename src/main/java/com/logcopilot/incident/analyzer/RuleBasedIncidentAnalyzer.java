@@ -11,7 +11,7 @@ import java.util.List;
 public class RuleBasedIncidentAnalyzer {
 
 	public AnalysisReport analyze(IncidentReanalyzeCommand command) {
-		String normalizedReason = normalizeReason(command.reason());
+		String normalizedReason = ReanalyzeReasonNormalizer.normalize(command.reason());
 		List<String> evidence = new ArrayList<>();
 		evidence.add("Reanalysis reason: " + normalizedReason);
 
@@ -33,12 +33,5 @@ public class RuleBasedIncidentAnalyzer {
 			),
 			List.of("Rule analyzer baseline only")
 		);
-	}
-
-	private String normalizeReason(String reason) {
-		if (reason == null || reason.isBlank()) {
-			return "manual trigger";
-		}
-		return reason.trim();
 	}
 }

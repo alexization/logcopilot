@@ -33,19 +33,26 @@ public class LlmIncidentAnalyzer {
 		}
 
 		LlmAccountService.LlmAccount account = accounts.get(0);
-		double baseConfidence = ruleReport.hypotheses().isEmpty()
+		List<Hypothesis> hypotheses = ruleReport.hypotheses() == null
+			? List.of()
+			: ruleReport.hypotheses();
+		List<String> ruleNextActions = ruleReport.nextActions() == null
+			? List.of()
+			: ruleReport.nextActions();
+
+		double baseConfidence = hypotheses.isEmpty()
 			? 0.6
-			: ruleReport.hypotheses().get(0).confidence();
+			: hypotheses.get(0).confidence();
 		double llmConfidence = Math.min(0.95, baseConfidence + 0.18);
 
 		List<String> evidence = new ArrayList<>();
 		evidence.add("LLM model: " + account.provider() + "/" + account.model());
-		evidence.add("Reanalysis reason: " + normalizeReason(command.reason()));
-		if (!ruleReport.hypotheses().isEmpty()) {
-			evidence.addAll(ruleReport.hypotheses().get(0).evidence());
+		evidence.add("Reanalysis reason: " + ReanalyzeReasonNormalizer.normalize(command.reason()));
+		if (!hypotheses.isEmpty() && hypotheses.get(0).evidence() != null) {
+			evidence.addAll(hypotheses.get(0).evidence());
 		}
 
-		List<String> nextActions = new ArrayList<>(ruleReport.nextActions());
+		List<String> nextActions = new ArrayList<>(ruleNextActions);
 		nextActions.add("Use targeted prompts for stack trace correlation");
 
 		return new AnalysisReport(
@@ -58,12 +65,5 @@ public class LlmIncidentAnalyzer {
 			nextActions,
 			List.of("LLM analyzer executed with configured account")
 		);
-	}
-
-	private String normalizeReason(String reason) {
-		if (reason == null || reason.isBlank()) {
-			return "manual trigger";
-		}
-		return reason.trim();
 	}
 }

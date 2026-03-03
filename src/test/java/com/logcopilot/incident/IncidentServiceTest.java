@@ -101,8 +101,8 @@ class IncidentServiceTest {
 	}
 
 	@Test
-	@DisplayName("IncidentService는 LLM 분석이 불가능하면 fallback 리포트를 남긴다")
-	void reanalyzeIncidentAddsFallbackLimitationWhenLlmUnavailable() {
+	@DisplayName("IncidentService는 주입된 analyzer 결과의 limitation을 재분석 리포트에 반영한다")
+	void reanalyzeIncidentReflectsInjectedAnalyzerLimitation() {
 		incidentService.recordIngestedEvents("project-1", List.of(
 			event("evt-1", "2026-03-03T03:00:00Z", "api", "error", "api error")
 		));
