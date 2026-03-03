@@ -43,6 +43,10 @@ public class ProjectService {
 		return List.copyOf(projectsById.values());
 	}
 
+	public synchronized boolean existsById(String projectId) {
+		return projectsById.containsKey(projectId);
+	}
+
 	private String validateName(String name) {
 		if (name == null) {
 			throw new BadRequestException("Project name must be between 1 and 100 characters");
