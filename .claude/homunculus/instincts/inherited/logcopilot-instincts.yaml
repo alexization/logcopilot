@@ -1,0 +1,259 @@
+# Instincts generated from https://github.com/alexization/logcopilot
+# Generated: 2026-03-03T02:11:56.900Z
+# Version: 2.0
+
+---
+id: logcopilot-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Commit Length
+
+## Action
+
+Keep commit messages concise (under 50 characters)
+
+## Evidence
+
+- Average commit message length: 33 chars
+- Based on 2 commits
+
+---
+id: logcopilot-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: logcopilot-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Export Style
+
+## Action
+
+Prefer mixed exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: mixed
+
+---
+id: logcopilot-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/alexization/logcopilot
+---
+
+# Logcopilot Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: logcopilot-java-class-naming
+trigger: "When creating a new Java class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Java Class Naming
+
+## Action
+
+Use PascalCase naming convention
+
+## Evidence
+
+- Java language convention detected
+- PascalCase pattern identified in codeStyle analysis
+
+---
+id: logcopilot-java-method-naming
+trigger: "When creating a new Java method or function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Java Method Naming
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Java language convention detected
+- camelCase function naming pattern identified
+
+---
+id: logcopilot-java-file-naming
+trigger: "When creating a new Java file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Java File Naming
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- camelCase file naming pattern detected in analysis
+
+---
+id: logcopilot-java-constants-naming
+trigger: "When declaring Java constants"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Java Constants Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE naming convention
+
+## Evidence
+
+- SCREAMING_SNAKE_CASE constant naming pattern detected
+
+---
+id: logcopilot-separate-test-structure
+trigger: "When creating test files"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Separate Test Structure
+
+## Action
+
+Place tests in separate test directory structure
+
+## Evidence
+
+- Test location marked as 'separate' in architecture analysis
+- src/test structure detected
+
+---
+id: logcopilot-commit-docs-prefix
+trigger: "When committing documentation changes"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Commit Docs Prefix
+
+## Action
+
+Use 'docs' prefix in commit message
+
+## Evidence
+
+- docs(workflow): [#1] T-01 문서/에이전트 워크플로우 체계 정립 commit example
+
+---
+id: logcopilot-commit-detailed-format
+trigger: "When writing commit messages for feature work"
+confidence: 0.5
+domain: git
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Commit Detailed Format
+
+## Action
+
+Use detailed format with scope, ticket reference, and Korean description
+
+## Evidence
+
+- docs(workflow): [#1] T-01 문서/에이전트 워크플로우 체계 정립 shows pattern of scope(area): [#ticket] ID description
+
+---
+id: logcopilot-gradle-build-system
+trigger: "When setting up build configuration"
+confidence: 0.7
+domain: architecture
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Gradle Build System
+
+## Action
+
+Use Gradle as the build system
+
+## Evidence
+
+- gradle folder detected in common folders
+
+---
+id: logcopilot-single-package-structure
+trigger: "When organizing project structure"
+confidence: 0.7
+domain: architecture
+source: repo-analysis
+source_repo: alexization/logcopilot
+---
+
+# Logcopilot Single Package Structure
+
+## Action
+
+Use single-package layout with main/test separation
+
+## Evidence
+
+- Single-package type detected
+- main/test src layout identified
+
