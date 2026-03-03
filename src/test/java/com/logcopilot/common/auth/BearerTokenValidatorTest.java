@@ -42,4 +42,12 @@ class BearerTokenValidatorTest {
 			.isInstanceOf(UnauthorizedException.class)
 			.hasMessage("Missing or invalid bearer token");
 	}
+
+	@Test
+	@DisplayName("BearerTokenValidator는 토큰 뒤에 추가 세그먼트가 있으면 예외를 던진다")
+	void throwsWhenAuthorizationHasMultipleSegments() {
+		assertThatThrownBy(() -> validator.validate("Bearer token extra"))
+			.isInstanceOf(UnauthorizedException.class)
+			.hasMessage("Missing or invalid bearer token");
+	}
 }

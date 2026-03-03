@@ -8,4 +8,7 @@ public record IngestEventsCommand(
 	String batchId,
 	List<CanonicalLogEvent> events
 ) {
+	public IngestEventsCommand {
+		events = events == null ? List.of() : List.copyOf(events);
+	}
 }

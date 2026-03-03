@@ -1,6 +1,8 @@
 package com.logcopilot.ingest.domain;
 
 import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public enum LogSeverity {
 	DEBUG("debug"),
@@ -8,6 +10,10 @@ public enum LogSeverity {
 	WARN("warn"),
 	ERROR("error"),
 	FATAL("fatal");
+
+	private static final Set<String> SUPPORTED_VALUES = Arrays.stream(values())
+		.map(LogSeverity::value)
+		.collect(Collectors.toUnmodifiableSet());
 
 	private final String value;
 
@@ -19,6 +25,10 @@ public enum LogSeverity {
 		if (severity == null || severity.isBlank()) {
 			return false;
 		}
-		return Arrays.stream(values()).anyMatch(it -> it.value.equals(severity));
+		return SUPPORTED_VALUES.contains(severity);
+	}
+
+	private String value() {
+		return value;
 	}
 }

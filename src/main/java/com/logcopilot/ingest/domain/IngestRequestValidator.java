@@ -13,7 +13,10 @@ public class IngestRequestValidator {
 		if (request == null) {
 			throw new ValidationException("ingest request must not be null");
 		}
-		if (request.projectId() == null || request.projectId().isBlank() || !projectExists) {
+		if (request.projectId() == null || request.projectId().isBlank()) {
+			throw new ValidationException("project_id is required");
+		}
+		if (!projectExists) {
 			throw new ValidationException("project_id must reference an existing project");
 		}
 		if (!IngestSource.isSupported(request.source())) {

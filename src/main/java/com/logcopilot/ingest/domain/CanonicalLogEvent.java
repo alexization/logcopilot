@@ -13,4 +13,7 @@ public record CanonicalLogEvent(
 	String stackTrace,
 	Map<String, Object> attributes
 ) {
+	public CanonicalLogEvent {
+		attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
+	}
 }

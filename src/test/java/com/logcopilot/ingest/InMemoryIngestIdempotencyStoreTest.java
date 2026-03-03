@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class InMemoryIngestIdempotencyStoreTest {
 
@@ -30,5 +31,25 @@ class InMemoryIngestIdempotencyStoreTest {
 		assertThat(store.find("key-1")).isEmpty();
 		assertThat(store.find("key-2")).isPresent();
 		assertThat(store.find("key-3")).isPresent();
+	}
+
+	@Test
+	@DisplayName("InMemoryIngestIdempotencyStore는 computeIfAbsent를 원자적으로 처리한다")
+	void computesValueOnlyWhenAbsent() {
+		InMemoryIngestIdempotencyStore store = new InMemoryIngestIdempotencyStore(10);
+		IngestAcceptedResult first = store.computeIfAbsent("key-1", key -> new IngestAcceptedResult(true, "ing-1", 1, 0));
+		IngestAcceptedResult second = store.computeIfAbsent("key-1", key -> new IngestAcceptedResult(true, "ing-2", 2, 1));
+
+		assertThat(first.ingestionId()).isEqualTo("ing-1");
+		assertThat(second.ingestionId()).isEqualTo("ing-1");
+		assertThat(store.find("key-1")).contains(first);
+	}
+
+	@Test
+	@DisplayName("InMemoryIngestIdempotencyStore는 maxSize가 1 미만이면 예외를 던진다")
+	void throwsWhenMaxSizeIsLessThanOne() {
+		assertThatThrownBy(() -> new InMemoryIngestIdempotencyStore(0))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessage("maxSize must be >= 1");
 	}
 }

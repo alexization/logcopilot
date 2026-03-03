@@ -30,25 +30,20 @@ public class IngestService {
 		this.eventDeduplicationPolicy = eventDeduplicationPolicy;
 	}
 
-	public synchronized IngestAcceptedResult ingestEvents(String idempotencyKey, IngestEventsCommand request) {
-		IngestAcceptedResult existing = idempotencyStore.find(idempotencyKey).orElse(null);
-		if (existing != null) {
-			return existing;
-		}
+	public IngestAcceptedResult ingestEvents(String idempotencyKey, IngestEventsCommand request) {
+		return idempotencyStore.computeIfAbsent(idempotencyKey, ignored -> {
+			boolean projectExists = projectService.existsById(request.projectId());
+			ingestRequestValidator.validate(request, projectExists);
+			int receivedEvents = request.events().size();
+			int deduplicatedEvents = eventDeduplicationPolicy.countDeduplicatedEvents(request.events());
 
-		boolean projectExists = projectService.existsById(request.projectId());
-		ingestRequestValidator.validate(request, projectExists);
-		int receivedEvents = request.events().size();
-		int deduplicatedEvents = eventDeduplicationPolicy.countDeduplicatedEvents(request.events());
-
-		IngestAcceptedResult accepted = new IngestAcceptedResult(
-			true,
-			UUID.randomUUID().toString(),
-			receivedEvents,
-			deduplicatedEvents
-		);
-		idempotencyStore.save(idempotencyKey, accepted);
-		return accepted;
+			return new IngestAcceptedResult(
+				true,
+				UUID.randomUUID().toString(),
+				receivedEvents,
+				deduplicatedEvents
+			);
+		});
 	}
 
 	public IngestAcceptedResult ingestOtlpLogs(String idempotencyKey, byte[] payload) {

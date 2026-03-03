@@ -11,11 +11,11 @@ public class BearerTokenValidator {
 			throw new UnauthorizedException("Missing or invalid bearer token");
 		}
 
-		String[] parts = authorization.trim().split("\\s+", 2);
+		String[] parts = authorization.trim().split("\\s+");
 		if (parts.length != 2 || !"bearer".equalsIgnoreCase(parts[0]) || parts[1].isBlank()) {
 			throw new UnauthorizedException("Missing or invalid bearer token");
 		}
 
-		return parts[1].trim();
+		return parts[1];
 	}
 }
