@@ -41,7 +41,7 @@ Use this checklist before closing each task.
 - [ ] Feature branch was created from `develop`.
 - [ ] PR targets `develop` and links issue (`Closes #...`).
 - [ ] PR 제목/본문이 한국어로 작성되었다.
-- [ ] coderabbitai/codex/ecc feedback reviewed and handled.
+- [ ] coderabbitai/codex feedback reviewed and handled.
 - [ ] Follow-up commits were added for accepted review changes.
 - [ ] Commit 메시지가 한국어로 작성되었다.
 - [ ] PR checks are green before merge.

@@ -27,7 +27,7 @@ Domain knowledge is documented under `docs/domain/`.
 8. Run challenge review ("딴지").
 9. Commit with template and handoff note.
 10. Open/update PR to `develop` with `gh pr`.
-11. Resolve coderabbitai/codex/ecc review feedback with follow-up commits.
+11. Resolve coderabbitai/codex review feedback with follow-up commits.
 12. Merge PR to `develop` only after checks/reviews are satisfied.
 
 ## Branch Policy

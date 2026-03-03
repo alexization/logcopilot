@@ -78,7 +78,7 @@
 - Issue/PR title and body must be written in Korean.
 
 ## 11) Review Feedback Loop (Mandatory)
-- Collect automated reviews from coderabbitai, codex, ecc.
+- Collect automated reviews from coderabbitai, codex.
 - Apply accepted feedback with additional commits.
 - Respond on PR with change rationale.
 - Repeat until blocking review comments/checks are resolved.
