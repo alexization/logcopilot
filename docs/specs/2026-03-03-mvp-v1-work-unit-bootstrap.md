@@ -78,6 +78,7 @@ An active technical spec and one delivery issue are required before implementati
 | T-02 | Project APIs (`POST/GET /v1/projects`) | Create/list project behaviors pass | Unit + integration | Medium |
 | T-03 | Loki connector upsert/test APIs | Connector upsert/test success+failure paths pass | Unit + integration | Medium |
 | T-04 | Ingest push path + idempotency + OTLP reserved behavior | `/v1/ingest/events` accepted with idempotency; OTLP reserved path handled | Unit + integration | High |
+| T-04R | Pre-T05 OOP refactor (auth guard + ingest domain separation) | Shared auth validation, ingest domain policy/store separation, unit tests pass | Unit + integration + regression | High |
 | T-05 | Incident listing/detail/reanalyze APIs | Incident read/reanalyze flows pass | Integration + regression | High |
 | T-06 | LLM account APIs (API key + OAuth start/callback + list/delete) | OpenAI/Gemini account lifecycle passes | Unit + integration | High |
 | T-07 | Analyzer chain (`rule -> llm -> fallback`) | Analyzer fallback behavior verified | Unit + integration | High |

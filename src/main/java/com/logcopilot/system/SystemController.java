@@ -1,7 +1,7 @@
 package com.logcopilot.system;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.error.UnauthorizedException;
+import com.logcopilot.common.auth.BearerTokenValidator;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
@@ -10,6 +10,12 @@ import java.util.Map;
 
 @RestController
 public class SystemController {
+
+	private final BearerTokenValidator bearerTokenValidator;
+
+	public SystemController(BearerTokenValidator bearerTokenValidator) {
+		this.bearerTokenValidator = bearerTokenValidator;
+	}
 
 	@GetMapping("/healthz")
 	public HealthResponse healthz() {
@@ -25,7 +31,7 @@ public class SystemController {
 	public SystemInfoResponse getSystemInfo(
 		@RequestHeader(value = "Authorization", required = false) String authorization
 	) {
-		validateBearerToken(authorization);
+		bearerTokenValidator.validate(authorization);
 		return new SystemInfoResponse(
 			new SystemInfoData(
 				"1.0.0-mvp",
@@ -38,17 +44,6 @@ public class SystemController {
 				)
 			)
 		);
-	}
-
-	private void validateBearerToken(String authorization) {
-		if (authorization == null || !authorization.startsWith("Bearer ")) {
-			throw new UnauthorizedException("Missing or invalid bearer token");
-		}
-
-		String token = authorization.substring(7).trim();
-		if (token.isEmpty()) {
-			throw new UnauthorizedException("Missing or invalid bearer token");
-		}
 	}
 
 	public record HealthResponse(String status) {

@@ -199,6 +199,29 @@ class IngestEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("POST /v1/ingest/events 는 events 항목에 null이 포함되면 422를 반환한다")
+	void ingestEventsReturns422WhenEventsContainNullItem() throws Exception {
+		String projectId = createProjectId("ingest-events-null-item");
+		String body = """
+			{
+			  "project_id": "%s",
+			  "source": "loki",
+			  "batch_id": "batch-1",
+			  "events": [null]
+			}
+			""".formatted(projectId);
+
+		mockMvc.perform(post("/v1/ingest/events")
+				.header("Authorization", "Bearer ingest-token")
+				.header("Idempotency-Key", "idem-" + UUID.randomUUID())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(body))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("events must not contain null items"));
+	}
+
+	@Test
 	@DisplayName("POST /v1/ingest/otlp/logs 는 MVP 기본에서 501을 반환한다")
 	void ingestOtlpLogsReturns501WhenReserved() throws Exception {
 		mockMvc.perform(post("/v1/ingest/otlp/logs")

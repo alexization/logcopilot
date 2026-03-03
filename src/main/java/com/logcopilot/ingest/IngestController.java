@@ -1,8 +1,12 @@
 package com.logcopilot.ingest;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.BadRequestException;
-import com.logcopilot.common.error.UnauthorizedException;
+import com.logcopilot.common.http.IdempotencyKeyValidator;
+import com.logcopilot.ingest.domain.CanonicalLogEvent;
+import com.logcopilot.ingest.domain.IngestAcceptedResult;
+import com.logcopilot.ingest.domain.IngestEventsCommand;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,9 +23,17 @@ import java.util.Map;
 public class IngestController {
 
 	private final IngestService ingestService;
+	private final BearerTokenValidator bearerTokenValidator;
+	private final IdempotencyKeyValidator idempotencyKeyValidator;
 
-	public IngestController(IngestService ingestService) {
+	public IngestController(
+		IngestService ingestService,
+		BearerTokenValidator bearerTokenValidator,
+		IdempotencyKeyValidator idempotencyKeyValidator
+	) {
 		this.ingestService = ingestService;
+		this.bearerTokenValidator = bearerTokenValidator;
+		this.idempotencyKeyValidator = idempotencyKeyValidator;
 	}
 
 	@PostMapping("/events")
@@ -30,11 +42,11 @@ public class IngestController {
 		@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
 		@RequestBody IngestEventsRequest request
 	) {
-		validateBearerToken(authorization);
-		String validatedIdempotencyKey = validateIdempotencyKey(idempotencyKey);
+		bearerTokenValidator.validate(authorization);
+		String validatedIdempotencyKey = idempotencyKeyValidator.validateRequired(idempotencyKey);
 		validateRequestBody(request);
 
-		IngestService.IngestAcceptedData accepted = ingestService.ingestEvents(
+		IngestAcceptedResult accepted = ingestService.ingestEvents(
 			validatedIdempotencyKey,
 			toServiceRequest(request)
 		);
@@ -47,15 +59,15 @@ public class IngestController {
 		@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
 		@RequestBody(required = false) byte[] payload
 	) {
-		validateBearerToken(authorization);
-		String validatedIdempotencyKey = validateIdempotencyKey(idempotencyKey);
+		bearerTokenValidator.validate(authorization);
+		String validatedIdempotencyKey = idempotencyKeyValidator.validateRequired(idempotencyKey);
 
-		IngestService.IngestAcceptedData accepted = ingestService.ingestOtlpLogs(validatedIdempotencyKey, payload);
+		IngestAcceptedResult accepted = ingestService.ingestOtlpLogs(validatedIdempotencyKey, payload);
 		return ResponseEntity.accepted().body(toResponse(accepted));
 	}
 
-	private IngestService.IngestEventsRequest toServiceRequest(IngestEventsRequest request) {
-		return new IngestService.IngestEventsRequest(
+	private IngestEventsCommand toServiceRequest(IngestEventsRequest request) {
+		return new IngestEventsCommand(
 			request.projectId(),
 			request.source(),
 			request.batchId(),
@@ -63,19 +75,19 @@ public class IngestController {
 		);
 	}
 
-	private List<IngestService.CanonicalLogEvent> toServiceEvents(List<CanonicalLogEventRequest> eventRequests) {
+	private List<CanonicalLogEvent> toServiceEvents(List<CanonicalLogEventRequest> eventRequests) {
 		if (eventRequests == null) {
 			return null;
 		}
 
-		List<IngestService.CanonicalLogEvent> events = new ArrayList<>();
+		List<CanonicalLogEvent> events = new ArrayList<>();
 		for (CanonicalLogEventRequest event : eventRequests) {
 			if (event == null) {
 				events.add(null);
 				continue;
 			}
 
-			events.add(new IngestService.CanonicalLogEvent(
+			events.add(new CanonicalLogEvent(
 				event.eventId(),
 				event.timestamp(),
 				event.service(),
@@ -91,7 +103,7 @@ public class IngestController {
 		return events;
 	}
 
-	private IngestAcceptedResponse toResponse(IngestService.IngestAcceptedData accepted) {
+	private IngestAcceptedResponse toResponse(IngestAcceptedResult accepted) {
 		return new IngestAcceptedResponse(
 			new IngestAcceptedData(
 				accepted.accepted(),
@@ -100,24 +112,6 @@ public class IngestController {
 				accepted.deduplicatedEvents()
 			)
 		);
-	}
-
-	private void validateBearerToken(String authorization) {
-		if (authorization == null) {
-			throw new UnauthorizedException("Missing or invalid bearer token");
-		}
-
-		String[] parts = authorization.trim().split("\\s+", 2);
-		if (parts.length != 2 || !"bearer".equalsIgnoreCase(parts[0]) || parts[1].isBlank()) {
-			throw new UnauthorizedException("Missing or invalid bearer token");
-		}
-	}
-
-	private String validateIdempotencyKey(String idempotencyKey) {
-		if (idempotencyKey == null || idempotencyKey.isBlank()) {
-			throw new BadRequestException("Idempotency-Key header is required");
-		}
-		return idempotencyKey.trim();
 	}
 
 	private void validateRequestBody(IngestEventsRequest request) {
