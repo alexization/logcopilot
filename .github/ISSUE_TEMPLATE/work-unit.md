@@ -1,7 +1,7 @@
 ---
 name: "작업 단위"
 about: "기능/개선 단위 이슈 (하나의 작업 단위, 하나의 PR)"
-title: "[작업 단위] "
+title: ""
 labels: ["work-unit"]
 ---
 

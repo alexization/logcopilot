@@ -29,7 +29,7 @@ Recommended branch naming:
 
 Example commands:
 ```bash
-gh issue create --title "[작업 단위] <제목>" --template "work-unit.md"
+gh issue create --title "<제목>" --template "work-unit.md"
 gh issue view <issue-number>
 ```
 
@@ -56,7 +56,7 @@ Always open PR with:
 
 Example commands:
 ```bash
-gh pr create --base develop --head <feature-branch> --title "[작업 단위] <제목>" --body-file .github/PULL_REQUEST_TEMPLATE.md
+gh pr create --base develop --head <feature-branch> --title "<제목>" --body-file .github/PULL_REQUEST_TEMPLATE.md
 gh pr view <pr-number> --comments
 gh pr checks <pr-number>
 ```
