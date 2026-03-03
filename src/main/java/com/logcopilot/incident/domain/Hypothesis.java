@@ -7,4 +7,7 @@ public record Hypothesis(
 	double confidence,
 	List<String> evidence
 ) {
+	public Hypothesis {
+		evidence = evidence == null ? List.of() : List.copyOf(evidence);
+	}
 }

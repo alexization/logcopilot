@@ -1,7 +1,6 @@
 package com.logcopilot.incident;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.logcopilot.common.api.ApiMeta;
 import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.incident.domain.IncidentDetail;
@@ -50,9 +49,7 @@ public class IncidentController {
 		@RequestParam(value = "limit", required = false) Integer limit
 	) {
 		bearerTokenValidator.validate(authorization);
-		if (!projectService.existsById(projectId)) {
-			throw new NotFoundException("Project not found");
-		}
+		validateProjectExists(projectId);
 
 		IncidentListResult result = incidentService.list(projectId, status, service, cursor, limit);
 		return new IncidentListResponse(
@@ -68,6 +65,7 @@ public class IncidentController {
 	) {
 		bearerTokenValidator.validate(authorization);
 		IncidentDetail detail = incidentService.getIncident(incidentId);
+		validateProjectExists(detail.projectId());
 		return new IncidentDetailResponse(detail);
 	}
 
@@ -78,11 +76,20 @@ public class IncidentController {
 		@RequestBody(required = false) ReanalyzeRequest request
 	) {
 		bearerTokenValidator.validate(authorization);
+		IncidentDetail detail = incidentService.getIncident(incidentId);
+		validateProjectExists(detail.projectId());
+
 		ReanalyzeAcceptedResult accepted = incidentService.reanalyzeIncident(
 			incidentId,
 			request == null ? null : request.reason()
 		);
 		return ResponseEntity.accepted().body(new ReanalyzeResponse(accepted));
+	}
+
+	private void validateProjectExists(String projectId) {
+		if (!projectService.existsById(projectId)) {
+			throw new NotFoundException("Project not found");
+		}
 	}
 
 	public record ReanalyzeRequest(String reason) {
@@ -98,14 +105,5 @@ public class IncidentController {
 	}
 
 	public record ReanalyzeResponse(ReanalyzeAcceptedResult data) {
-	}
-
-	public record ApiMeta(
-		@JsonProperty("request_id")
-		String requestId,
-		@JsonInclude(JsonInclude.Include.NON_NULL)
-		@JsonProperty("next_cursor")
-		String nextCursor
-	) {
 	}
 }

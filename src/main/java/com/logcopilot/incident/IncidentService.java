@@ -11,6 +11,8 @@ import com.logcopilot.incident.domain.IncidentStatus;
 import com.logcopilot.incident.domain.IncidentSummary;
 import com.logcopilot.incident.domain.ReanalyzeAcceptedResult;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -25,6 +27,7 @@ import java.util.UUID;
 @Service
 public class IncidentService {
 
+	private static final Logger logger = LoggerFactory.getLogger(IncidentService.class);
 	private static final int DEFAULT_LIMIT = 50;
 	private static final int MAX_LIMIT = 200;
 
@@ -47,8 +50,7 @@ public class IncidentService {
 		for (Map.Entry<String, List<CanonicalLogEvent>> entry : eventsByService.entrySet()) {
 			String service = entry.getKey();
 			List<CanonicalLogEvent> serviceEvents = entry.getValue();
-			Instant firstSeen = minTimestamp(serviceEvents);
-			Instant lastSeen = maxTimestamp(serviceEvents);
+			TimestampRange timestampRange = computeTimestampRange(serviceEvents);
 			int severityScore = maxSeverityScore(serviceEvents);
 			AnalysisReport report = defaultReport(service, serviceEvents);
 			IncidentState state = new IncidentState(
@@ -58,8 +60,8 @@ public class IncidentService {
 				service,
 				severityScore,
 				serviceEvents.size(),
-				firstSeen,
-				lastSeen,
+				timestampRange.firstSeen(),
+				timestampRange.lastSeen(),
 				report
 			);
 			incidentsById.put(state.id, state);
@@ -120,8 +122,18 @@ public class IncidentService {
 			throw new ConflictException("Incident reanalysis already in progress");
 		}
 
-		state.status = IncidentStatus.INVESTIGATING;
-		state.report = reanalyzedReport(state, reason);
+		IncidentState updated = new IncidentState(
+			state.id,
+			state.projectId,
+			IncidentStatus.INVESTIGATING,
+			state.service,
+			state.severityScore,
+			state.eventCount,
+			state.firstSeen,
+			state.lastSeen,
+			reanalyzedReport(state, reason)
+		);
+		incidentsById.put(incidentId, updated);
 		return new ReanalyzeAcceptedResult(true, UUID.randomUUID().toString());
 	}
 
@@ -174,36 +186,39 @@ public class IncidentService {
 		}
 	}
 
-	private Instant minTimestamp(List<CanonicalLogEvent> events) {
+	private TimestampRange computeTimestampRange(List<CanonicalLogEvent> events) {
 		Instant min = null;
+		Instant max = null;
+
 		for (CanonicalLogEvent event : events) {
 			Instant timestamp = parseTimestamp(event.timestamp());
+			if (timestamp == null) {
+				continue;
+			}
 			if (min == null || timestamp.isBefore(min)) {
 				min = timestamp;
 			}
-		}
-		return min == null ? Instant.now() : min;
-	}
-
-	private Instant maxTimestamp(List<CanonicalLogEvent> events) {
-		Instant max = null;
-		for (CanonicalLogEvent event : events) {
-			Instant timestamp = parseTimestamp(event.timestamp());
 			if (max == null || timestamp.isAfter(max)) {
 				max = timestamp;
 			}
 		}
-		return max == null ? Instant.now() : max;
+
+		if (min == null || max == null) {
+			Instant now = Instant.now();
+			return new TimestampRange(now, now);
+		}
+		return new TimestampRange(min, max);
 	}
 
 	private Instant parseTimestamp(String timestamp) {
 		if (timestamp == null || timestamp.isBlank()) {
-			return Instant.now();
+			return null;
 		}
 		try {
 			return Instant.parse(timestamp);
-		} catch (DateTimeParseException ignored) {
-			return Instant.now();
+		} catch (DateTimeParseException exception) {
+			logger.warn("Failed to parse timestamp: {}", timestamp, exception);
+			return null;
 		}
 	}
 
@@ -272,37 +287,19 @@ public class IncidentService {
 		);
 	}
 
-	private static class IncidentState {
-		private final String id;
-		private final String projectId;
-		private IncidentStatus status;
-		private final String service;
-		private final int severityScore;
-		private final int eventCount;
-		private final Instant firstSeen;
-		private final Instant lastSeen;
-		private AnalysisReport report;
+	private record TimestampRange(Instant firstSeen, Instant lastSeen) {
+	}
 
-		private IncidentState(
-			String id,
-			String projectId,
-			IncidentStatus status,
-			String service,
-			int severityScore,
-			int eventCount,
-			Instant firstSeen,
-			Instant lastSeen,
-			AnalysisReport report
-		) {
-			this.id = id;
-			this.projectId = projectId;
-			this.status = status;
-			this.service = service;
-			this.severityScore = severityScore;
-			this.eventCount = eventCount;
-			this.firstSeen = firstSeen;
-			this.lastSeen = lastSeen;
-			this.report = report;
-		}
+	private record IncidentState(
+		String id,
+		String projectId,
+		IncidentStatus status,
+		String service,
+		int severityScore,
+		int eventCount,
+		Instant firstSeen,
+		Instant lastSeen,
+		AnalysisReport report
+	) {
 	}
 }
