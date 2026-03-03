@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -135,6 +136,46 @@ class IngestEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("POST /v1/ingest/events 는 source가 null이면 422를 반환한다")
+	void ingestEventsReturns422WhenSourceIsNull() throws Exception {
+		String projectId = createProjectId("ingest-source-null");
+
+		mockMvc.perform(post("/v1/ingest/events")
+				.header("Authorization", "Bearer ingest-token")
+				.header("Idempotency-Key", "idem-" + UUID.randomUUID())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(ingestEventsRequestBody(
+					projectId,
+					null,
+					"batch-1",
+					List.of(event("evt-1", "2026-03-03T03:00:00Z", "api", "error", "failure"))
+				)))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("source must be one of: loki, otlp, custom"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/ingest/events 는 severity가 null이면 422를 반환한다")
+	void ingestEventsReturns422WhenSeverityIsNull() throws Exception {
+		String projectId = createProjectId("ingest-severity-null");
+
+		mockMvc.perform(post("/v1/ingest/events")
+				.header("Authorization", "Bearer ingest-token")
+				.header("Idempotency-Key", "idem-" + UUID.randomUUID())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(ingestEventsRequestBody(
+					projectId,
+					"loki",
+					"batch-1",
+					List.of(event("evt-1", "2026-03-03T03:00:00Z", "api", null, "failure"))
+				)))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("severity must be one of: debug, info, warn, error, fatal"));
+	}
+
+	@Test
 	@DisplayName("POST /v1/ingest/events 는 events가 null이면 422를 반환한다")
 	void ingestEventsReturns422WhenEventsIsNull() throws Exception {
 		String projectId = createProjectId("ingest-events-null");
@@ -200,12 +241,11 @@ class IngestEndpointsContractTest {
 		String batchId,
 		List<Map<String, Object>> events
 	) throws Exception {
-		Map<String, Object> body = Map.of(
-			"project_id", projectId,
-			"source", source,
-			"batch_id", batchId,
-			"events", events
-		);
+		Map<String, Object> body = new LinkedHashMap<>();
+		body.put("project_id", projectId);
+		body.put("source", source);
+		body.put("batch_id", batchId);
+		body.put("events", events);
 		return objectMapper.writeValueAsString(body);
 	}
 
@@ -216,13 +256,13 @@ class IngestEndpointsContractTest {
 		String severity,
 		String message
 	) {
-		return Map.of(
-			"event_id", eventId,
-			"timestamp", timestamp,
-			"service", service,
-			"severity", severity,
-			"message", message
-		);
+		Map<String, Object> event = new LinkedHashMap<>();
+		event.put("event_id", eventId);
+		event.put("timestamp", timestamp);
+		event.put("service", service);
+		event.put("severity", severity);
+		event.put("message", message);
+		return event;
 	}
 
 	private String jsonValue(MvcResult result, String pointer) throws Exception {

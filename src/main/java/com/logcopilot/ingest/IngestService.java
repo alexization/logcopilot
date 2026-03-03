@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,9 +18,15 @@ public class IngestService {
 
 	private static final Set<String> ALLOWED_SOURCES = Set.of("loki", "otlp", "custom");
 	private static final Set<String> ALLOWED_SEVERITIES = Set.of("debug", "info", "warn", "error", "fatal");
+	private static final int IDEMPOTENCY_CACHE_MAX_SIZE = 10_000;
 
 	private final ProjectService projectService;
-	private final Map<String, IngestAcceptedData> acceptedByIdempotencyKey = new HashMap<>();
+	private final Map<String, IngestAcceptedData> acceptedByIdempotencyKey = new LinkedHashMap<>() {
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<String, IngestAcceptedData> eldest) {
+			return size() > IDEMPOTENCY_CACHE_MAX_SIZE;
+		}
+	};
 
 	public IngestService(ProjectService projectService) {
 		this.projectService = projectService;
@@ -57,7 +63,7 @@ public class IngestService {
 		if (request.projectId() == null || request.projectId().isBlank() || !projectService.existsById(request.projectId())) {
 			throw new ValidationException("project_id must reference an existing project");
 		}
-		if (!ALLOWED_SOURCES.contains(request.source())) {
+		if (request.source() == null || request.source().isBlank() || !ALLOWED_SOURCES.contains(request.source())) {
 			throw new ValidationException("source must be one of: loki, otlp, custom");
 		}
 		if (request.batchId() == null || request.batchId().isBlank()) {
@@ -75,13 +81,16 @@ public class IngestService {
 	}
 
 	private void validateEvent(CanonicalLogEvent event) {
+		if (event == null) {
+			throw new ValidationException("event must not be null");
+		}
 		if (event.eventId() == null || event.eventId().isBlank()) {
 			throw new ValidationException("event_id must not be blank");
 		}
 		if (event.service() == null || event.service().isBlank()) {
 			throw new ValidationException("service must not be blank");
 		}
-		if (!ALLOWED_SEVERITIES.contains(event.severity())) {
+		if (event.severity() == null || event.severity().isBlank() || !ALLOWED_SEVERITIES.contains(event.severity())) {
 			throw new ValidationException("severity must be one of: debug, info, warn, error, fatal");
 		}
 		if (event.message() == null || event.message().isBlank()) {
