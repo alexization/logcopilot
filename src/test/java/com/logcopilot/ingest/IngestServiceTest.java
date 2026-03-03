@@ -6,6 +6,7 @@ import com.logcopilot.ingest.domain.EventDeduplicationPolicy;
 import com.logcopilot.ingest.domain.IngestAcceptedResult;
 import com.logcopilot.ingest.domain.IngestEventsCommand;
 import com.logcopilot.ingest.domain.IngestRequestValidator;
+import com.logcopilot.incident.IncidentService;
 import com.logcopilot.project.ProjectService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,9 @@ class IngestServiceTest {
 	@Mock
 	private EventDeduplicationPolicy eventDeduplicationPolicy;
 
+	@Mock
+	private IncidentService incidentService;
+
 	@InjectMocks
 	private IngestService ingestService;
 
@@ -59,6 +63,7 @@ class IngestServiceTest {
 		assertThat(result).isEqualTo(cached);
 		verify(projectService, never()).existsById(any());
 		verify(ingestRequestValidator, never()).validate(any(), anyBoolean());
+		verify(incidentService, never()).recordIngestedEvents(any(), any());
 	}
 
 	@Test
@@ -82,6 +87,7 @@ class IngestServiceTest {
 		verify(projectService).existsById("project-1");
 		verify(ingestRequestValidator).validate(request, true);
 		verify(eventDeduplicationPolicy).countDeduplicatedEvents(request.events());
+		verify(incidentService).recordIngestedEvents("project-1", request.events());
 	}
 
 	@Test
@@ -100,6 +106,7 @@ class IngestServiceTest {
 			.isInstanceOf(ValidationException.class)
 			.hasMessage("project_id must reference an existing project");
 		verify(eventDeduplicationPolicy, never()).countDeduplicatedEvents(any());
+		verify(incidentService, never()).recordIngestedEvents(any(), any());
 	}
 
 	@Test
@@ -118,6 +125,7 @@ class IngestServiceTest {
 			.isInstanceOf(ValidationException.class)
 			.hasMessage("events size must be between 1 and 5000");
 		verify(eventDeduplicationPolicy, never()).countDeduplicatedEvents(any());
+		verify(incidentService, never()).recordIngestedEvents(any(), any());
 	}
 
 	private IngestEventsCommand validRequest() {

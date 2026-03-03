@@ -5,6 +5,7 @@ import com.logcopilot.ingest.domain.EventDeduplicationPolicy;
 import com.logcopilot.ingest.domain.IngestAcceptedResult;
 import com.logcopilot.ingest.domain.IngestEventsCommand;
 import com.logcopilot.ingest.domain.IngestRequestValidator;
+import com.logcopilot.incident.IncidentService;
 import com.logcopilot.project.ProjectService;
 import org.springframework.stereotype.Service;
 
@@ -17,17 +18,20 @@ public class IngestService {
 	private final IngestIdempotencyStore idempotencyStore;
 	private final IngestRequestValidator ingestRequestValidator;
 	private final EventDeduplicationPolicy eventDeduplicationPolicy;
+	private final IncidentService incidentService;
 
 	public IngestService(
 		ProjectService projectService,
 		IngestIdempotencyStore idempotencyStore,
 		IngestRequestValidator ingestRequestValidator,
-		EventDeduplicationPolicy eventDeduplicationPolicy
+		EventDeduplicationPolicy eventDeduplicationPolicy,
+		IncidentService incidentService
 	) {
 		this.projectService = projectService;
 		this.idempotencyStore = idempotencyStore;
 		this.ingestRequestValidator = ingestRequestValidator;
 		this.eventDeduplicationPolicy = eventDeduplicationPolicy;
+		this.incidentService = incidentService;
 	}
 
 	public IngestAcceptedResult ingestEvents(String idempotencyKey, IngestEventsCommand request) {
@@ -36,6 +40,7 @@ public class IngestService {
 			ingestRequestValidator.validate(request, projectExists);
 			int receivedEvents = request.events().size();
 			int deduplicatedEvents = eventDeduplicationPolicy.countDeduplicatedEvents(request.events());
+			incidentService.recordIngestedEvents(request.projectId(), request.events());
 
 			return new IngestAcceptedResult(
 				true,
