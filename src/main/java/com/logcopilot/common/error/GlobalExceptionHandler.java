@@ -30,6 +30,21 @@ public class GlobalExceptionHandler {
 		return error(HttpStatus.CONFLICT, "conflict", exception.getMessage());
 	}
 
+	@ExceptionHandler(NotFoundException.class)
+	public ResponseEntity<ApiErrorResponse> handleNotFound(NotFoundException exception) {
+		return error(HttpStatus.NOT_FOUND, "not_found", exception.getMessage());
+	}
+
+	@ExceptionHandler(ValidationException.class)
+	public ResponseEntity<ApiErrorResponse> handleValidation(ValidationException exception) {
+		return error(HttpStatus.UNPROCESSABLE_ENTITY, "validation_error", exception.getMessage());
+	}
+
+	@ExceptionHandler(BadGatewayException.class)
+	public ResponseEntity<ApiErrorResponse> handleBadGateway(BadGatewayException exception) {
+		return error(HttpStatus.BAD_GATEWAY, "bad_gateway", exception.getMessage());
+	}
+
 	private ResponseEntity<ApiErrorResponse> error(HttpStatus status, String code, String message) {
 		return ResponseEntity.status(status)
 			.body(ApiErrorResponse.of(code, message));
