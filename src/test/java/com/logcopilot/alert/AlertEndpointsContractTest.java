@@ -123,6 +123,48 @@ class AlertEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("POST /v1/projects/{project_id}/alerts/email 는 기존 채널 설정 시 200으로 갱신한다")
+	void configureEmailReturns200OnUpdate() throws Exception {
+		String projectId = createProjectId("alert-email-update");
+
+		MvcResult created = mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(emailRequestBody(
+					"alerts@example.com",
+					"\"oncall@example.com\"",
+					"smtp.example.com",
+					587,
+					"smtp-user",
+					"smtp-secret",
+					true,
+					0.6
+				)))
+			.andExpect(status().isCreated())
+			.andReturn();
+
+		String channelId = jsonValue(created, "/data/id");
+		assertThat(channelId).isNotBlank();
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(emailRequestBody(
+					"alerts@example.com",
+					"\"sre@example.com\",\"lead@example.com\"",
+					"smtp.example.com",
+					587,
+					"smtp-user",
+					"smtp-secret",
+					true,
+					0.7
+				)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.id").value(channelId))
+			.andExpect(jsonPath("$.data.type").value("email"));
+	}
+
+	@Test
 	@DisplayName("POST /v1/projects/{project_id}/alerts/email 는 recipients가 비면 422를 반환한다")
 	void configureEmailReturns422WhenRecipientsEmpty() throws Exception {
 		String projectId = createProjectId("alert-email-invalid-recipients");
