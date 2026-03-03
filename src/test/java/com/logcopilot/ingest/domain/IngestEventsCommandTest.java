@@ -35,6 +35,19 @@ class IngestEventsCommandTest {
 		assertThat(command.events()).isEmpty();
 	}
 
+	@Test
+	@DisplayName("IngestEventsCommand는 null 이벤트 요소를 보존한다")
+	void keepsNullEventElementsForValidator() {
+		List<CanonicalLogEvent> events = new ArrayList<>();
+		events.add(null);
+		events.add(validEvent("event-1"));
+
+		IngestEventsCommand command = new IngestEventsCommand("project-1", "loki", "batch-1", events);
+
+		assertThat(command.events()).hasSize(2);
+		assertThat(command.events().get(0)).isNull();
+	}
+
 	private CanonicalLogEvent validEvent(String eventId) {
 		return new CanonicalLogEvent(
 			eventId,

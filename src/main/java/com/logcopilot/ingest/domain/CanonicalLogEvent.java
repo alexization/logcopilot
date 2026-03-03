@@ -1,5 +1,7 @@
 package com.logcopilot.ingest.domain;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public record CanonicalLogEvent(
@@ -14,6 +16,10 @@ public record CanonicalLogEvent(
 	Map<String, Object> attributes
 ) {
 	public CanonicalLogEvent {
-		attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
+		if (attributes == null) {
+			attributes = Map.of();
+		} else {
+			attributes = Collections.unmodifiableMap(new LinkedHashMap<>(attributes));
+		}
 	}
 }

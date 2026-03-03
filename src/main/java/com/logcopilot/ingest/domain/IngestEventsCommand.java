@@ -1,5 +1,7 @@
 package com.logcopilot.ingest.domain;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public record IngestEventsCommand(
@@ -9,6 +11,10 @@ public record IngestEventsCommand(
 	List<CanonicalLogEvent> events
 ) {
 	public IngestEventsCommand {
-		events = events == null ? List.of() : List.copyOf(events);
+		if (events == null) {
+			events = List.of();
+		} else {
+			events = Collections.unmodifiableList(new ArrayList<>(events));
+		}
 	}
 }

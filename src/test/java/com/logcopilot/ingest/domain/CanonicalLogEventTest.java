@@ -53,4 +53,26 @@ class CanonicalLogEventTest {
 
 		assertThat(event.attributes()).isEmpty();
 	}
+
+	@Test
+	@DisplayName("CanonicalLogEvent는 attributes의 null 값을 허용한다")
+	void keepsNullAttributeValues() {
+		Map<String, Object> attributes = new HashMap<>();
+		attributes.put("nullable", null);
+
+		CanonicalLogEvent event = new CanonicalLogEvent(
+			"event-1",
+			"2026-03-03T03:00:00Z",
+			"api",
+			"error",
+			"boom",
+			null,
+			null,
+			null,
+			attributes
+		);
+
+		assertThat(event.attributes()).containsKey("nullable");
+		assertThat(event.attributes().get("nullable")).isNull();
+	}
 }
