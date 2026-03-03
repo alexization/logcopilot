@@ -227,6 +227,10 @@ class AlertEndpointsContractTest {
 
 		String actor = jsonValue(firstPage, "/data/0/actor");
 		String nextCursor = jsonValue(firstPage, "/meta/next_cursor");
+		assertThat(actor)
+			.startsWith("token:")
+			.doesNotContain("actor-token-a")
+			.doesNotContain("actor-token-b");
 
 		mockMvc.perform(get("/v1/projects/{project_id}/audit-logs", projectId)
 				.header("Authorization", "Bearer reader-token")

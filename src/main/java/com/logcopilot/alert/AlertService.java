@@ -5,6 +5,7 @@ import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.project.ProjectService;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.MessageDigest;
@@ -101,7 +102,7 @@ public class AlertService {
 			result.channel().id(),
 			Map.of(
 				"type", "email",
-				"from", from,
+				"from", maskEmailForAudit(from),
 				"recipients_count", recipients.size(),
 				"smtp_host", smtp.host(),
 				"smtp_port", smtp.port(),
@@ -295,12 +296,25 @@ public class AlertService {
 		}
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			byte[] bytes = digest.digest(normalized.getBytes());
+			byte[] bytes = digest.digest(normalized.getBytes(StandardCharsets.UTF_8));
 			String hex = HexFormat.of().formatHex(bytes);
 			return "token:" + hex.substring(0, 12);
 		} catch (NoSuchAlgorithmException exception) {
 			throw new IllegalStateException("SHA-256 is not available", exception);
 		}
+	}
+
+	private String maskEmailForAudit(String email) {
+		String normalized = normalizeOptional(email);
+		if (normalized == null) {
+			return "domain:unknown";
+		}
+
+		int atIndex = normalized.lastIndexOf('@');
+		if (atIndex < 0 || atIndex == normalized.length() - 1) {
+			return "domain:unknown";
+		}
+		return "domain:" + normalized.substring(atIndex + 1).toLowerCase(Locale.ROOT);
 	}
 
 	private String requireNonBlank(String value, String message) {

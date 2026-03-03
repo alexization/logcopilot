@@ -150,6 +150,7 @@ class AlertServiceTest {
 		assertThat(second.data()).hasSize(1);
 		assertThat(byAction.data()).hasSize(1);
 		assertThat(byAction.data().get(0).action()).isEqualTo("alert.email.configured");
+		assertThat(byAction.data().get(0).metadata().get("from")).isEqualTo("domain:example.com");
 		assertThat(byActor.data()).allMatch(log -> log.actor().equals(actor));
 	}
 
