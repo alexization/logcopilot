@@ -1,6 +1,7 @@
 package com.logcopilot.connector;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.logcopilot.common.error.BadRequestException;
 import com.logcopilot.common.error.UnauthorizedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,7 @@ public class LokiConnectorController {
 		@RequestBody LokiConnectorRequest request
 	) {
 		validateBearerToken(authorization);
+		validateRequestBody(request);
 
 		LokiConnectorService.UpsertResult result = lokiConnectorService.upsert(
 			projectId,
@@ -53,6 +55,12 @@ public class LokiConnectorController {
 
 		HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
 		return ResponseEntity.status(status).body(body);
+	}
+
+	private void validateRequestBody(LokiConnectorRequest request) {
+		if (request == null) {
+			throw new BadRequestException("Malformed JSON request body");
+		}
 	}
 
 	@PostMapping("/test")

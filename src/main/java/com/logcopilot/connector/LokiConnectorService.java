@@ -67,10 +67,12 @@ public class LokiConnectorService {
 			throw new NotFoundException("Loki connector not found");
 		}
 
+		// TODO(T-04): 계약 테스트용 시뮬레이션이며, 실제 Loki 연동 로직으로 대체해야 한다.
 		if (connector.endpoint().contains("bad-gateway") || connector.query().contains("upstream_fail")) {
 			throw new BadGatewayException("Failed to reach Loki upstream");
 		}
 
+		// TODO(T-04): 하드코딩 응답 대신 실제 Loki 조회 결과를 반환해야 한다.
 		return new LokiTestResult(true, 12, 37, "Loki connector test succeeded");
 	}
 
@@ -178,6 +180,7 @@ public class LokiConnectorService {
 		String type,
 		String token,
 		String username,
+		// TODO(T-05): DB 영속화 시 비밀값(password/token) 암호화 저장으로 전환한다.
 		String password
 	) {
 	}

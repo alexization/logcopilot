@@ -158,6 +158,20 @@ class LokiConnectorEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("POST /v1/projects/{project_id}/connectors/loki 는 JSON null 본문이면 400을 반환한다")
+	void upsertLokiConnectorReturns400OnNullJsonBody() throws Exception {
+		String projectId = createProjectId("loki-null-body");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("null"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("Malformed JSON request body"));
+	}
+
+	@Test
 	@DisplayName("POST /v1/projects/{project_id}/connectors/loki/test 는 테스트 성공 시 200을 반환한다")
 	void testLokiConnectorReturns200OnSuccess() throws Exception {
 		String projectId = createProjectId("loki-test-success");
