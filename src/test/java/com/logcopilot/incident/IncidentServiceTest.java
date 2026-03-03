@@ -3,6 +3,7 @@ package com.logcopilot.incident;
 import com.logcopilot.common.error.ConflictException;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.ingest.domain.CanonicalLogEvent;
+import com.logcopilot.incident.analyzer.IncidentAnalyzer;
 import com.logcopilot.incident.domain.IncidentDetail;
 import com.logcopilot.incident.domain.IncidentListResult;
 import com.logcopilot.incident.domain.IncidentStatus;
@@ -18,7 +19,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IncidentServiceTest {
 
-	private final IncidentService incidentService = new IncidentService();
+	private final IncidentAnalyzer incidentAnalyzer = command -> new com.logcopilot.incident.domain.AnalysisReport(
+		"Analyzed incident " + command.incidentId(),
+		List.of(),
+		List.of("Review logs around " + command.service()),
+		List.of("LLM analysis unavailable; fallback report generated (test)")
+	);
+	private final IncidentService incidentService = new IncidentService(incidentAnalyzer);
 
 	@Test
 	@DisplayName("IncidentService는 ingest 이벤트를 서비스 단위 incident로 기록한다")
@@ -91,6 +98,21 @@ class IncidentServiceTest {
 		assertThat(accepted.accepted()).isTrue();
 		assertThat(accepted.jobId()).isNotBlank();
 		assertThat(detail.status()).isEqualTo(IncidentStatus.INVESTIGATING);
+	}
+
+	@Test
+	@DisplayName("IncidentService는 주입된 analyzer 결과의 limitation을 재분석 리포트에 반영한다")
+	void reanalyzeIncidentReflectsInjectedAnalyzerLimitation() {
+		incidentService.recordIngestedEvents("project-1", List.of(
+			event("evt-1", "2026-03-03T03:00:00Z", "api", "error", "api error")
+		));
+		String incidentId = incidentService.list("project-1", null, null, null, null).data().get(0).id();
+
+		incidentService.reanalyzeIncident(incidentId, "follow-up");
+		IncidentDetail detail = incidentService.getIncident(incidentId);
+
+		assertThat(detail.report().limitations())
+			.anyMatch(message -> message.contains("fallback report generated"));
 	}
 
 	@Test
