@@ -5,7 +5,6 @@ import com.logcopilot.common.error.ConflictException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,7 +40,7 @@ public class ProjectService {
 	}
 
 	public synchronized List<ProjectDto> list() {
-		return List.copyOf(new ArrayList<>(projectsById.values()));
+		return List.copyOf(projectsById.values());
 	}
 
 	private String validateName(String name) {

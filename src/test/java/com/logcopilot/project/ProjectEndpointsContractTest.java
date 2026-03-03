@@ -28,12 +28,7 @@ class ProjectEndpointsContractTest {
 		mockMvc.perform(post("/v1/projects")
 				.header("Authorization", "Bearer test-token")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "name": "core-api",
-					  "environment": "prod"
-					}
-					"""))
+				.content(projectRequestBody("core-api", "prod")))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.data.id").isString())
 			.andExpect(jsonPath("$.data.name").value("core-api"))
@@ -47,12 +42,7 @@ class ProjectEndpointsContractTest {
 		mockMvc.perform(post("/v1/projects")
 				.header("Authorization", "Bearer test-token")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "name": "billing-api",
-					  "environment": "staging"
-					}
-					"""))
+				.content(projectRequestBody("billing-api", "staging")))
 			.andExpect(status().isCreated());
 
 		mockMvc.perform(get("/v1/projects")
@@ -68,12 +58,38 @@ class ProjectEndpointsContractTest {
 	void createProjectRejectsMissingBearerToken() throws Exception {
 		mockMvc.perform(post("/v1/projects")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "name": "auth-api",
-					  "environment": "dev"
-					}
-					"""))
+				.content(projectRequestBody("auth-api", "dev")))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects 는 공백 Bearer 토큰이면 401을 반환한다")
+	void createProjectRejectsBlankBearerToken() throws Exception {
+		mockMvc.perform(post("/v1/projects")
+				.header("Authorization", "Bearer    ")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(projectRequestBody("auth-api", "dev")))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects 는 인증 헤더가 없으면 401을 반환한다")
+	void listProjectsRejectsMissingBearerToken() throws Exception {
+		mockMvc.perform(get("/v1/projects"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects 는 공백 Bearer 토큰이면 401을 반환한다")
+	void listProjectsRejectsBlankBearerToken() throws Exception {
+		mockMvc.perform(get("/v1/projects")
+				.header("Authorization", "Bearer    "))
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.error.code").value("unauthorized"))
 			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
@@ -85,15 +101,22 @@ class ProjectEndpointsContractTest {
 		mockMvc.perform(post("/v1/projects")
 				.header("Authorization", "Bearer test-token")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "name": "",
-					  "environment": "prod"
-					}
-					"""))
+				.content(projectRequestBody("", "prod")))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.error.code").value("bad_request"))
 			.andExpect(jsonPath("$.error.message").value("Project name must be between 1 and 100 characters"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects 는 잘못된 JSON 바디면 400을 반환한다")
+	void createProjectReturns400ForMalformedJson() throws Exception {
+		mockMvc.perform(post("/v1/projects")
+				.header("Authorization", "Bearer test-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"broken\","))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("Malformed JSON request body"));
 	}
 
 	@Test
@@ -102,25 +125,24 @@ class ProjectEndpointsContractTest {
 		mockMvc.perform(post("/v1/projects")
 				.header("Authorization", "Bearer test-token")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "name": "orders-api",
-					  "environment": "prod"
-					}
-					"""))
+				.content(projectRequestBody("orders-api", "prod")))
 			.andExpect(status().isCreated());
 
 		mockMvc.perform(post("/v1/projects")
 				.header("Authorization", "Bearer test-token")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{
-					  "name": "orders-api",
-					  "environment": "dev"
-					}
-					"""))
+				.content(projectRequestBody("orders-api", "dev")))
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.error.code").value("conflict"))
 			.andExpect(jsonPath("$.error.message").value("Project name already exists"));
+	}
+
+	private String projectRequestBody(String name, String environment) {
+		return """
+			{
+			  "name": "%s",
+			  "environment": "%s"
+			}
+			""".formatted(name, environment);
 	}
 }

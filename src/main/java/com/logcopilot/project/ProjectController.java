@@ -42,12 +42,12 @@ public class ProjectController {
 	}
 
 	private void validateBearerToken(String authorization) {
-		if (authorization == null || !authorization.startsWith("Bearer ")) {
+		if (authorization == null) {
 			throw new UnauthorizedException("Missing or invalid bearer token");
 		}
 
-		String token = authorization.substring(7).trim();
-		if (token.isEmpty()) {
+		String[] parts = authorization.trim().split("\\s+", 2);
+		if (parts.length != 2 || !"bearer".equalsIgnoreCase(parts[0]) || parts[1].isBlank()) {
 			throw new UnauthorizedException("Missing or invalid bearer token");
 		}
 	}
