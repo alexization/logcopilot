@@ -15,7 +15,7 @@ Do not develop directly on `main` or `develop`.
 2. Create feature branch from `develop`
 3. Implement subtasks with commits
 4. Open PR to `develop`
-5. Receive automated reviews (coderabbitai, codex, ecc)
+5. Receive automated reviews (coderabbitai, codex)
 6. Apply feedback with additional commits
 7. Merge to `develop` when all checks/reviews are complete
 
@@ -63,7 +63,7 @@ gh pr checks <pr-number>
 
 ## 5) Review Handling Loop (Mandatory)
 After PR is open:
-1. Collect feedback from coderabbitai, codex, ecc.
+1. Collect feedback from coderabbitai, codex.
 2. Classify each comment:
    - must-fix
    - optional improvement

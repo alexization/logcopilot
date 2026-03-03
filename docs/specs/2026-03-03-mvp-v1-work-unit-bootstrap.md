@@ -65,10 +65,10 @@ An active technical spec and one delivery issue are required before implementati
 | AC ID | Rule Type (Unit/Integration/E2E/Build/Static) | Command | Pass Condition |
 | --- | --- | --- | --- |
 | AC1 | Static | `test -f docs/specs/2026-03-03-mvp-v1-work-unit-bootstrap.md` | exit code 0 |
-| AC1 | Static | `rg "## 2\\. Goals|## 3\\. Non-Goals|## 6\\. Acceptance Criteria|## 8\\. Task Breakdown" docs/specs/2026-03-03-mvp-v1-work-unit-bootstrap.md` | all headings found |
+| AC1 | Static | `rg -q "^## 2\\. Goals$" docs/specs/2026-03-03-mvp-v1-work-unit-bootstrap.md && rg -q "^## 3\\. Non-Goals$" docs/specs/2026-03-03-mvp-v1-work-unit-bootstrap.md && rg -q "^## 6\\. Acceptance Criteria" docs/specs/2026-03-03-mvp-v1-work-unit-bootstrap.md && rg -q "^## 8\\. Task Breakdown$" docs/specs/2026-03-03-mvp-v1-work-unit-bootstrap.md` | exit code 0 |
 | AC2 | Static | `rg "^\\| T-0[0-9]|^\\| T-1[0-1]" docs/specs/2026-03-03-mvp-v1-work-unit-bootstrap.md` | task rows found |
-| AC3 | Static/GitHub | `gh issue view 6 --json number,title,state` | issue exists and state is open |
-| AC4 | Static/Git | `git branch --show-current` | matches `feature/6-*` |
+| AC3 | Static/GitHub | `gh issue view 6 --json state --jq '.state' | rg -q '^OPEN$' && gh issue view 6 --json body --jq '.body' | rg -q 'docs/specs/2026-03-03-mvp-v1-work-unit-bootstrap.md'` | exit code 0 |
+| AC4 | Static/Git | `git merge-base --is-ancestor develop feature/6-mvp-bootstrap-spec-wu00` | exit code 0 |
 
 ## 8. Task Breakdown
 | Task ID | Description | Done Signal | Required Tests | Risk |

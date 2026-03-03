@@ -42,4 +42,4 @@ labels: ["work-unit"]
 ## 종료 기준
 - [ ] 코드 + 테스트 완료
 - [ ] `develop` 대상 PR 생성 완료
-- [ ] coderabbitai/codex/ecc 리뷰 반영 완료
+- [ ] coderabbitai/codex 리뷰 반영 완료
