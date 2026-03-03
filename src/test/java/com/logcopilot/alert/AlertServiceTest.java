@@ -168,6 +168,53 @@ class AlertServiceTest {
 	}
 
 	@Test
+	@DisplayName("AlertService는 프로젝트별 audit 로그를 retention 상한까지만 유지한다")
+	void listAuditLogsKeepsOnlyRecentLogsWithinRetentionLimit() {
+		ProjectDto project = projectService.create("alert-service-retention", "prod");
+		AlertService limitedAlertService = new AlertService(projectService, 2);
+
+		limitedAlertService.configureSlack(
+			project.id(),
+			"actor-old",
+			new AlertService.ConfigureSlackCommand(
+				"https://hooks.slack.com/services/T000/B000/OLD",
+				"#old",
+				0.45
+			)
+		);
+		limitedAlertService.configureEmail(
+			project.id(),
+			"actor-mid",
+			new AlertService.ConfigureEmailCommand(
+				"alerts@example.com",
+				List.of("oncall@example.com"),
+				new AlertService.SmtpCommand("smtp.example.com", 587, "user", "secret", true),
+				0.5
+			)
+		);
+		limitedAlertService.configureSlack(
+			project.id(),
+			"actor-new",
+			new AlertService.ConfigureSlackCommand(
+				"https://hooks.slack.com/services/T000/B000/NEW",
+				"#new",
+				0.9
+			)
+		);
+
+		AlertService.AuditLogListResult logs = limitedAlertService.listAuditLogs(
+			project.id(),
+			new AlertService.AuditLogQuery(null, null, null, 50)
+		);
+
+		assertThat(logs.data()).hasSize(2);
+		assertThat(logs.data())
+			.noneMatch(log -> "#old".equals(log.metadata().get("channel")));
+		assertThat(logs.data())
+			.anyMatch(log -> "#new".equals(log.metadata().get("channel")));
+	}
+
+	@Test
 	@DisplayName("AlertService는 존재하지 않는 프로젝트 audit 조회 시 NotFoundException을 던진다")
 	void listAuditLogsThrowsNotFoundWhenProjectMissing() {
 		assertThatThrownBy(() -> alertService.listAuditLogs(

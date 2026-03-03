@@ -3,6 +3,7 @@ package com.logcopilot.alert;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.project.ProjectService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -28,14 +29,25 @@ public class AlertService {
 	private static final int DEFAULT_LIMIT = 50;
 	private static final int MAX_LIMIT = 200;
 	private static final double DEFAULT_MIN_CONFIDENCE = 0.45d;
+	private static final int DEFAULT_MAX_AUDIT_LOGS_PER_PROJECT = 5_000;
 	private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
 	private final ProjectService projectService;
+	private final int maxAuditLogsPerProject;
 	private final Map<String, Map<String, AlertChannelState>> channelsByProject = new HashMap<>();
 	private final Map<String, List<AuditLogState>> auditLogsByProject = new HashMap<>();
 
+	@Autowired
 	public AlertService(ProjectService projectService) {
+		this(projectService, DEFAULT_MAX_AUDIT_LOGS_PER_PROJECT);
+	}
+
+	AlertService(ProjectService projectService, int maxAuditLogsPerProject) {
+		if (maxAuditLogsPerProject < 1) {
+			throw new IllegalArgumentException("maxAuditLogsPerProject must be >= 1");
+		}
 		this.projectService = projectService;
+		this.maxAuditLogsPerProject = maxAuditLogsPerProject;
 	}
 
 	public synchronized ConfigureResult configureSlack(
@@ -186,6 +198,9 @@ public class AlertService {
 			Instant.now(),
 			Map.copyOf(metadata)
 		));
+		while (logs.size() > maxAuditLogsPerProject) {
+			logs.remove(0);
+		}
 	}
 
 	private void requireProjectForWrite(String projectId) {

@@ -150,4 +150,21 @@ class PolicyServiceTest {
 			.isInstanceOf(BadRequestException.class)
 			.hasMessage("rules[0].pattern contains disallowed nested quantifier");
 	}
+
+	@Test
+	@DisplayName("PolicyService는 과도하게 긴 정규식 패턴을 차단한다")
+	void updateRedactionPolicyRejectsOverlyLongPattern() {
+		ProjectDto project = projectService.create("policy-redaction-pattern-length", "prod");
+		String longPattern = "a".repeat(513);
+
+		assertThatThrownBy(() -> policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(
+				true,
+				List.of(new PolicyService.RedactionRuleCommand("too-long", longPattern, "[MASKED]"))
+			)
+		))
+			.isInstanceOf(BadRequestException.class)
+			.hasMessage("rules[0].pattern must be at most 512 characters");
+	}
 }

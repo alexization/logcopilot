@@ -17,6 +17,7 @@ import java.util.regex.PatternSyntaxException;
 public class PolicyService {
 
 	private static final int MAX_REDACTION_RULES = 200;
+	private static final int MAX_REGEX_PATTERN_LENGTH = 512;
 	private static final Pattern NESTED_QUANTIFIER_PATTERN =
 		Pattern.compile(
 			"\\((?:[^()\\\\]|\\\\.)*(?:[+*?]|\\{\\d+(?:,\\d*)?\\})(?:[^()\\\\]|\\\\.)*\\)(?:[+*?]|\\{\\d+(?:,\\d*)?\\})"
@@ -130,6 +131,12 @@ public class PolicyService {
 	}
 
 	private void validateRegex(int index, String pattern) {
+		if (pattern.length() > MAX_REGEX_PATTERN_LENGTH) {
+			throw new BadRequestException(
+				"rules[%d].pattern must be at most %d characters".formatted(index, MAX_REGEX_PATTERN_LENGTH)
+			);
+		}
+
 		if (NESTED_QUANTIFIER_PATTERN.matcher(pattern).find()) {
 			throw new BadRequestException(
 				"rules[%d].pattern contains disallowed nested quantifier".formatted(index)
