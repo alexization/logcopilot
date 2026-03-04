@@ -4,7 +4,9 @@ import com.logcopilot.common.error.BadRequestException;
 import com.logcopilot.common.error.ConflictException;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.common.error.ValidationException;
+import com.logcopilot.common.persistence.StateSnapshotRepository;
 import com.logcopilot.project.ProjectService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -24,23 +26,45 @@ import java.util.UUID;
 @Service
 public class LlmAccountService {
 
+	private static final String SNAPSHOT_SCOPE = "llm-account-service";
+
 	private final ProjectService projectService;
 	private final LlmOAuthProperties oauthProperties;
 	private final Clock clock;
+	private final StateSnapshotRepository stateSnapshotRepository;
 	private final Map<String, LinkedHashMap<String, AccountState>> accountsByProject = new HashMap<>();
 	private final Map<String, Map<String, String>> apiKeyAccountIdByProjectProvider = new HashMap<>();
 	private final Map<String, Map<String, String>> oauthAccountIdByProjectProvider = new HashMap<>();
 	private final Map<String, OAuthState> oauthStateByValue = new HashMap<>();
 
-	@Autowired
 	public LlmAccountService(ProjectService projectService, LlmOAuthProperties oauthProperties) {
-		this(projectService, oauthProperties, Clock.systemUTC());
+		this(projectService, oauthProperties, Clock.systemUTC(), null);
 	}
 
 	LlmAccountService(ProjectService projectService, LlmOAuthProperties oauthProperties, Clock clock) {
+		this(projectService, oauthProperties, clock, null);
+	}
+
+	@Autowired
+	public LlmAccountService(
+		ProjectService projectService,
+		LlmOAuthProperties oauthProperties,
+		ObjectProvider<StateSnapshotRepository> stateSnapshotRepositoryProvider
+	) {
+		this(projectService, oauthProperties, Clock.systemUTC(), stateSnapshotRepositoryProvider.getIfAvailable());
+	}
+
+	LlmAccountService(
+		ProjectService projectService,
+		LlmOAuthProperties oauthProperties,
+		Clock clock,
+		StateSnapshotRepository stateSnapshotRepository
+	) {
 		this.projectService = projectService;
 		this.oauthProperties = oauthProperties;
 		this.clock = clock;
+		this.stateSnapshotRepository = stateSnapshotRepository;
+		restoreState();
 	}
 
 	public synchronized UpsertResult upsertApiKey(String projectId, ApiKeyUpsertCommand command) {
@@ -80,6 +104,7 @@ public class LlmAccountService {
 			);
 			accounts.put(accountId, created);
 			byProvider.put(provider, accountId);
+			persistState();
 			return new UpsertResult(true, toLlmAccount(created));
 		}
 
@@ -100,6 +125,7 @@ public class LlmAccountService {
 			command.apiKey()
 		);
 		accounts.put(existingId, updated);
+		persistState();
 		return new UpsertResult(false, toLlmAccount(updated));
 	}
 
@@ -112,6 +138,7 @@ public class LlmAccountService {
 		String authUrl = buildAuthorizationUrl(projectId, provider, state);
 		enforceOAuthStateCapacity();
 		oauthStateByValue.put(state, new OAuthState(projectId, provider, Instant.now(clock)));
+		persistState();
 		return new OAuthStartResult(authUrl, state);
 	}
 
@@ -135,14 +162,17 @@ public class LlmAccountService {
 		}
 		if (isExpired(started, now)) {
 			oauthStateByValue.remove(state);
+			persistState();
 			throw new ConflictException("Invalid or expired oauth state");
 		}
 		if (!started.projectId().equals(projectId) || !started.provider().equals(provider)) {
 			oauthStateByValue.remove(state);
+			persistState();
 			throw new ConflictException("Invalid or expired oauth state");
 		}
 		oauthStateByValue.remove(state);
 		if (hasProviderError(providerError)) {
+			persistState();
 			throw new BadRequestException(providerErrorMessage(providerError, providerErrorDescription));
 		}
 		validateCode(code);
@@ -158,6 +188,7 @@ public class LlmAccountService {
 
 		String existingId = byProvider.get(provider);
 		if (existingId != null && accounts.containsKey(existingId)) {
+			persistState();
 			return new OAuthCallbackResult(true, existingId);
 		}
 
@@ -175,6 +206,7 @@ public class LlmAccountService {
 		);
 		accounts.put(accountId, created);
 		byProvider.put(provider, accountId);
+		persistState();
 		return new OAuthCallbackResult(true, accountId);
 	}
 
@@ -204,6 +236,7 @@ public class LlmAccountService {
 			if (byProvider != null) {
 				byProvider.remove(removed.provider());
 			}
+			persistState();
 			return;
 		}
 
@@ -213,6 +246,7 @@ public class LlmAccountService {
 				byProvider.remove(removed.provider());
 			}
 		}
+		persistState();
 	}
 
 	private void requireProject(String projectId) {
@@ -448,7 +482,7 @@ public class LlmAccountService {
 	) {
 	}
 
-	private record AccountState(
+	record AccountState(
 		String id,
 		String provider,
 		String authType,
@@ -461,10 +495,84 @@ public class LlmAccountService {
 	) {
 	}
 
-	private record OAuthState(
+	record OAuthState(
 		String projectId,
 		String provider,
 		Instant createdAt
+	) {
+	}
+
+	private void restoreState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		stateSnapshotRepository.load(SNAPSHOT_SCOPE, LlmAccountSnapshot.class)
+			.ifPresent(snapshot -> {
+				accountsByProject.clear();
+				apiKeyAccountIdByProjectProvider.clear();
+				oauthAccountIdByProjectProvider.clear();
+				oauthStateByValue.clear();
+
+				if (snapshot.accountsByProject() != null) {
+					snapshot.accountsByProject().forEach((projectId, accounts) -> accountsByProject.put(
+						projectId,
+						accounts == null ? new LinkedHashMap<>() : new LinkedHashMap<>(accounts)
+					));
+				}
+				if (snapshot.apiKeyAccountIdByProjectProvider() != null) {
+					snapshot.apiKeyAccountIdByProjectProvider().forEach((projectId, mapping) ->
+						apiKeyAccountIdByProjectProvider.put(
+							projectId,
+							mapping == null ? new HashMap<>() : new HashMap<>(mapping)
+						)
+					);
+				}
+				if (snapshot.oauthAccountIdByProjectProvider() != null) {
+					snapshot.oauthAccountIdByProjectProvider().forEach((projectId, mapping) ->
+						oauthAccountIdByProjectProvider.put(
+							projectId,
+							mapping == null ? new HashMap<>() : new HashMap<>(mapping)
+						)
+					);
+				}
+				if (snapshot.oauthStateByValue() != null) {
+					oauthStateByValue.putAll(snapshot.oauthStateByValue());
+				}
+			});
+	}
+
+	private void persistState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		Map<String, LinkedHashMap<String, AccountState>> copiedAccounts = new HashMap<>();
+		accountsByProject.forEach((projectId, accounts) ->
+			copiedAccounts.put(projectId, new LinkedHashMap<>(accounts))
+		);
+		Map<String, Map<String, String>> copiedApiKeyMapping = new HashMap<>();
+		apiKeyAccountIdByProjectProvider.forEach((projectId, mapping) ->
+			copiedApiKeyMapping.put(projectId, new HashMap<>(mapping))
+		);
+		Map<String, Map<String, String>> copiedOauthMapping = new HashMap<>();
+		oauthAccountIdByProjectProvider.forEach((projectId, mapping) ->
+			copiedOauthMapping.put(projectId, new HashMap<>(mapping))
+		);
+		stateSnapshotRepository.save(
+			SNAPSHOT_SCOPE,
+			new LlmAccountSnapshot(
+				copiedAccounts,
+				copiedApiKeyMapping,
+				copiedOauthMapping,
+				new HashMap<>(oauthStateByValue)
+			)
+		);
+	}
+
+	record LlmAccountSnapshot(
+		Map<String, LinkedHashMap<String, AccountState>> accountsByProject,
+		Map<String, Map<String, String>> apiKeyAccountIdByProjectProvider,
+		Map<String, Map<String, String>> oauthAccountIdByProjectProvider,
+		Map<String, OAuthState> oauthStateByValue
 	) {
 	}
 }

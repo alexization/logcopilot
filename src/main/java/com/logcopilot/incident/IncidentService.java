@@ -3,6 +3,7 @@ package com.logcopilot.incident;
 import com.logcopilot.alert.AlertService;
 import com.logcopilot.common.error.ConflictException;
 import com.logcopilot.common.error.NotFoundException;
+import com.logcopilot.common.persistence.StateSnapshotRepository;
 import com.logcopilot.ingest.domain.CanonicalLogEvent;
 import com.logcopilot.incident.analyzer.IncidentAnalyzer;
 import com.logcopilot.incident.analyzer.IncidentReanalyzeCommand;
@@ -13,6 +14,7 @@ import com.logcopilot.incident.domain.IncidentListResult;
 import com.logcopilot.incident.domain.IncidentStatus;
 import com.logcopilot.incident.domain.IncidentSummary;
 import com.logcopilot.incident.domain.ReanalyzeAcceptedResult;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
@@ -31,24 +33,43 @@ import java.util.UUID;
 @Service
 public class IncidentService {
 
+	private static final String SNAPSHOT_SCOPE = "incident-service";
 	private static final Logger logger = LoggerFactory.getLogger(IncidentService.class);
 	private static final int DEFAULT_LIMIT = 50;
 	private static final int MAX_LIMIT = 200;
 
 	private final IncidentAnalyzer incidentAnalyzer;
 	private final AlertService alertService;
+	private final StateSnapshotRepository stateSnapshotRepository;
 	private final Map<String, IncidentState> incidentsById = new LinkedHashMap<>();
 	private final Map<String, List<String>> incidentIdsByProject = new HashMap<>();
 
 	@Autowired
-	public IncidentService(IncidentAnalyzer incidentAnalyzer, AlertService alertService) {
-		this.incidentAnalyzer = incidentAnalyzer;
-		this.alertService = alertService;
+	public IncidentService(
+		IncidentAnalyzer incidentAnalyzer,
+		AlertService alertService,
+		ObjectProvider<StateSnapshotRepository> stateSnapshotRepositoryProvider
+	) {
+		this(incidentAnalyzer, alertService, stateSnapshotRepositoryProvider.getIfAvailable());
+	}
+
+	IncidentService(IncidentAnalyzer incidentAnalyzer, AlertService alertService) {
+		this(incidentAnalyzer, alertService, (StateSnapshotRepository) null);
 	}
 
 	IncidentService(IncidentAnalyzer incidentAnalyzer) {
+		this(incidentAnalyzer, null, (StateSnapshotRepository) null);
+	}
+
+	IncidentService(
+		IncidentAnalyzer incidentAnalyzer,
+		AlertService alertService,
+		StateSnapshotRepository stateSnapshotRepository
+	) {
 		this.incidentAnalyzer = incidentAnalyzer;
-		this.alertService = null;
+		this.alertService = alertService;
+		this.stateSnapshotRepository = stateSnapshotRepository;
+		restoreState();
 	}
 
 	public void recordIngestedEvents(String projectId, List<CanonicalLogEvent> events) {
@@ -94,6 +115,7 @@ public class IncidentService {
 				incidentsById.put(state.id, state);
 				incidentIdsByProject.computeIfAbsent(projectId, ignored -> new ArrayList<>()).add(state.id);
 			}
+			persistState();
 		}
 
 		for (IncidentState state : createdIncidents) {
@@ -190,6 +212,7 @@ public class IncidentService {
 			))
 		);
 		incidentsById.put(incidentId, updated);
+		persistState();
 		return new ReanalyzeAcceptedResult(true, UUID.randomUUID().toString());
 	}
 
@@ -340,7 +363,7 @@ public class IncidentService {
 	private record TimestampRange(Instant firstSeen, Instant lastSeen) {
 	}
 
-	private record IncidentState(
+	record IncidentState(
 		String id,
 		String projectId,
 		IncidentStatus status,
@@ -350,6 +373,46 @@ public class IncidentService {
 		Instant firstSeen,
 		Instant lastSeen,
 		AnalysisReport report
+	) {
+	}
+
+	private void restoreState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		stateSnapshotRepository.load(SNAPSHOT_SCOPE, IncidentSnapshot.class)
+			.ifPresent(snapshot -> {
+				incidentsById.clear();
+				incidentIdsByProject.clear();
+				if (snapshot.incidentsById() != null) {
+					incidentsById.putAll(snapshot.incidentsById());
+				}
+				if (snapshot.incidentIdsByProject() != null) {
+					snapshot.incidentIdsByProject().forEach((projectId, incidentIds) -> incidentIdsByProject.put(
+						projectId,
+						incidentIds == null ? new ArrayList<>() : new ArrayList<>(incidentIds)
+					));
+				}
+			});
+	}
+
+	private void persistState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		Map<String, List<String>> copiedIncidentIdsByProject = new HashMap<>();
+		incidentIdsByProject.forEach((projectId, incidentIds) ->
+			copiedIncidentIdsByProject.put(projectId, new ArrayList<>(incidentIds))
+		);
+		stateSnapshotRepository.save(
+			SNAPSHOT_SCOPE,
+			new IncidentSnapshot(new LinkedHashMap<>(incidentsById), copiedIncidentIdsByProject)
+		);
+	}
+
+	record IncidentSnapshot(
+		Map<String, IncidentState> incidentsById,
+		Map<String, List<String>> incidentIdsByProject
 	) {
 	}
 }
