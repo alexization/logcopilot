@@ -1,7 +1,11 @@
 package com.logcopilot.connector;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.error.BadRequestException;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,10 +29,8 @@ public class LokiConnectorController {
 	@PostMapping
 	public ResponseEntity<ConnectorResponse> upsertLokiConnector(
 		@PathVariable("project_id") String projectId,
-		@RequestBody LokiConnectorRequest request
+		@Valid @RequestBody LokiConnectorRequest request
 	) {
-		validateRequestBody(request);
-
 		LokiConnectorService.UpsertResult result = lokiConnectorService.upsert(
 			projectId,
 			new LokiConnectorService.LokiConnectorRequest(
@@ -53,12 +55,6 @@ public class LokiConnectorController {
 		return ResponseEntity.status(status).body(body);
 	}
 
-	private void validateRequestBody(LokiConnectorRequest request) {
-		if (request == null) {
-			throw new BadRequestException("Malformed JSON request body");
-		}
-	}
-
 	@PostMapping("/test")
 	public LokiTestResponse testLokiConnector(
 		@PathVariable("project_id") String projectId
@@ -75,12 +71,18 @@ public class LokiConnectorController {
 	}
 
 	public record LokiConnectorRequest(
+		@NotBlank(message = "Endpoint must be a valid URI")
 		String endpoint,
 		@JsonProperty("tenant_id")
 		String tenantId,
+		@NotNull(message = "Auth type must be one of: none, bearer, basic")
+		@Valid
 		LokiConnectorService.AuthRequest auth,
+		@NotBlank(message = "Query must not be blank")
 		String query,
 		@JsonProperty("poll_interval_seconds")
+		@Min(value = 5, message = "poll_interval_seconds must be between 5 and 300")
+		@Max(value = 300, message = "poll_interval_seconds must be between 5 and 300")
 		Integer pollIntervalSeconds
 	) {
 	}

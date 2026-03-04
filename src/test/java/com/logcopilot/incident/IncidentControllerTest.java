@@ -112,7 +112,9 @@ class IncidentControllerTest {
 				.content("{\"reason\":\"" + reason + "\"}"))
 			.andExpect(status().isUnprocessableEntity())
 			.andExpect(jsonPath("$.error.code").value("validation_error"))
-			.andExpect(jsonPath("$.error.message").value("reason must be at most 500 characters"));
+			.andExpect(jsonPath("$.error.message").value("reason must be at most 500 characters"))
+			.andExpect(jsonPath("$.error.details[0].field").value("reason"))
+			.andExpect(jsonPath("$.error.details[0].message").value("reason must be at most 500 characters"));
 
 		verify(incidentService, never()).getIncident("incident-1");
 		verify(incidentService, never()).reanalyzeIncident("incident-1", reason);

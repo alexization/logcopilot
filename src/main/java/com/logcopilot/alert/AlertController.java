@@ -2,10 +2,20 @@ package com.logcopilot.alert;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.logcopilot.common.api.ApiMeta;
-import com.logcopilot.common.error.ValidationException;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
+@Validated
 @RequestMapping("/v1/projects/{project_id}")
 public class AlertController {
 
@@ -31,13 +42,11 @@ public class AlertController {
 	@PostMapping("/alerts/slack")
 	public ResponseEntity<AlertChannelResponse> configureSlack(
 		@PathVariable("project_id") String projectId,
-		@RequestBody(required = false) SlackAlertRequest request,
+		@NotNull(message = "Request body must not be null")
+		@Valid @RequestBody(required = false) SlackAlertRequest request,
 		Authentication authentication
 	) {
 		String actorToken = authentication.getName();
-		if (request == null) {
-			throw new ValidationException("Request body must not be null");
-		}
 
 		AlertService.ConfigureResult result = alertService.configureSlack(
 			projectId,
@@ -54,13 +63,11 @@ public class AlertController {
 	@PostMapping("/alerts/email")
 	public ResponseEntity<AlertChannelResponse> configureEmail(
 		@PathVariable("project_id") String projectId,
-		@RequestBody(required = false) EmailAlertRequest request,
+		@NotNull(message = "Request body must not be null")
+		@Valid @RequestBody(required = false) EmailAlertRequest request,
 		Authentication authentication
 	) {
 		String actorToken = authentication.getName();
-		if (request == null) {
-			throw new ValidationException("Request body must not be null");
-		}
 
 		AlertService.ConfigureResult result = alertService.configureEmail(
 			projectId,
@@ -68,15 +75,13 @@ public class AlertController {
 			new AlertService.ConfigureEmailCommand(
 				request.from(),
 				request.recipients(),
-				request.smtp() == null
-					? null
-					: new AlertService.SmtpCommand(
-						request.smtp().host(),
-						request.smtp().port(),
-						request.smtp().username(),
-						request.smtp().password(),
-						request.smtp().starttls()
-					),
+				new AlertService.SmtpCommand(
+					request.smtp().host(),
+					request.smtp().port(),
+					request.smtp().username(),
+					request.smtp().password(),
+					request.smtp().starttls()
+				),
 				request.minConfidence()
 			)
 		);
@@ -121,27 +126,46 @@ public class AlertController {
 	}
 
 	public record SlackAlertRequest(
+		@NotBlank(message = "webhook_url must be a valid URI")
+		@Pattern(regexp = "https?://.+", message = "webhook_url must be a valid URI")
 		@JsonProperty("webhook_url")
 		String webhookUrl,
+		@NotBlank(message = "channel must not be blank")
 		String channel,
 		@JsonProperty("min_confidence")
+		@DecimalMin(value = "0.0", message = "min_confidence must be between 0 and 1")
+		@DecimalMax(value = "1.0", message = "min_confidence must be between 0 and 1")
 		Double minConfidence
 	) {
 	}
 
 	public record EmailAlertRequest(
+		@NotBlank(message = "from must be a valid email")
+		@Email(message = "from must be a valid email")
 		String from,
-		List<String> recipients,
+		@NotNull(message = "recipients must contain at least 1 email")
+		@Size(min = 1, message = "recipients must contain at least 1 email")
+		List<@NotBlank(message = "recipient must be a valid email") @Email(message = "recipient must be a valid email") String> recipients,
+		@NotNull(message = "smtp must not be null")
+		@Valid
 		SmtpRequest smtp,
 		@JsonProperty("min_confidence")
+		@DecimalMin(value = "0.0", message = "min_confidence must be between 0 and 1")
+		@DecimalMax(value = "1.0", message = "min_confidence must be between 0 and 1")
 		Double minConfidence
 	) {
 	}
 
 	public record SmtpRequest(
+		@NotBlank(message = "smtp.host must not be blank")
 		String host,
+		@NotNull(message = "smtp.port must be between 1 and 65535")
+		@Min(value = 1, message = "smtp.port must be between 1 and 65535")
+		@Max(value = 65535, message = "smtp.port must be between 1 and 65535")
 		Integer port,
+		@NotBlank(message = "smtp.username must not be blank")
 		String username,
+		@NotBlank(message = "smtp.password must not be blank")
 		String password,
 		Boolean starttls
 	) {

@@ -1,7 +1,10 @@
 package com.logcopilot.llm;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.error.BadRequestException;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,10 +32,8 @@ public class LlmAccountController {
 	@PostMapping("/llm-accounts/api-key")
 	public ResponseEntity<LlmAccountResponse> upsertApiKeyLlmAccount(
 		@PathVariable("project_id") String projectId,
-		@RequestBody LlmApiKeyAccountRequest request
+		@Valid @RequestBody LlmApiKeyAccountRequest request
 	) {
-		validateApiKeyRequestBody(request);
-
 		LlmAccountService.UpsertResult result = llmAccountService.upsertApiKey(
 			projectId,
 			new LlmAccountService.ApiKeyUpsertCommand(
@@ -91,12 +92,6 @@ public class LlmAccountController {
 		return ResponseEntity.noContent().build();
 	}
 
-	private void validateApiKeyRequestBody(LlmApiKeyAccountRequest request) {
-		if (request == null) {
-			throw new BadRequestException("Malformed JSON request body");
-		}
-	}
-
 	private LlmAccountData toData(LlmAccountService.LlmAccount account) {
 		return new LlmAccountData(
 			account.id(),
@@ -110,10 +105,15 @@ public class LlmAccountController {
 	}
 
 	public record LlmApiKeyAccountRequest(
+		@NotBlank(message = "provider must not be blank")
+		@Pattern(regexp = "(?i)openai|gemini", message = "provider must be one of: openai, gemini")
 		String provider,
+		@Size(max = 80, message = "label must be at most 80 characters")
 		String label,
+		@NotBlank(message = "api_key must not be blank")
 		@JsonProperty("api_key")
 		String apiKey,
+		@NotBlank(message = "model must not be blank")
 		String model,
 		@JsonProperty("base_url")
 		String baseUrl
