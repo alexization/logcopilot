@@ -255,6 +255,202 @@ button.secondary {
 	margin-bottom: 0.55rem;
 }
 
+.card.workspace-card > .card-header {
+	align-items: flex-start;
+}
+
+.project-chip-wrap {
+	display: grid;
+	gap: 0.2rem;
+	justify-items: end;
+}
+
+.chip-label {
+	font-size: 0.74rem;
+	font-weight: 600;
+	color: var(--text-subtle);
+}
+
+#active-project-id {
+	display: inline-flex;
+	padding: 0.2rem 0.5rem;
+	border-radius: 999px;
+	background: rgba(11, 95, 63, 0.1);
+	border: 1px solid rgba(11, 95, 63, 0.22);
+	font-size: 0.8rem;
+	color: var(--accent-strong);
+}
+
+.section-feedback {
+	margin-top: 0.15rem;
+	margin-bottom: 0.85rem;
+	font-size: 0.88rem;
+	padding: 0.44rem 0.6rem;
+	border-radius: 9px;
+	border: 1px solid transparent;
+}
+
+.feedback-info {
+	background: rgba(45, 89, 70, 0.08);
+	border-color: rgba(24, 66, 49, 0.18);
+	color: #234e3e;
+}
+
+.feedback-success {
+	background: rgba(13, 125, 84, 0.14);
+	border-color: rgba(13, 125, 84, 0.3);
+	color: #114735;
+}
+
+.feedback-error {
+	background: rgba(174, 47, 47, 0.12);
+	border-color: rgba(174, 47, 47, 0.32);
+	color: #7e2525;
+}
+
+.section-body {
+	display: grid;
+	gap: 0.85rem;
+}
+
+.workspace-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.85rem;
+}
+
+.section-body .workspace-card {
+	border-radius: 12px;
+	padding: 0.85rem 0.92rem;
+	background: rgba(255, 255, 255, 0.68);
+	border: 1px solid rgba(18, 35, 28, 0.11);
+}
+
+.section-body .workspace-card h3 {
+	margin: 0 0 0.55rem;
+	font-size: 0.98rem;
+}
+
+.muted {
+	color: var(--text-subtle);
+	font-size: 0.85rem;
+	margin-bottom: 0.6rem;
+}
+
+.empty-state {
+	padding: 0.6rem 0.65rem;
+	border-radius: 10px;
+	background: rgba(61, 89, 76, 0.08);
+	border: 1px dashed rgba(61, 89, 76, 0.28);
+}
+
+.form-grid {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 0.44rem;
+}
+
+.form-grid-inline {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	align-items: end;
+}
+
+.form-grid label {
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: #1f4033;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea {
+	width: 100%;
+	border: 1px solid rgba(26, 46, 37, 0.2);
+	border-radius: 8px;
+	padding: 0.5rem 0.56rem;
+	font-size: 0.88rem;
+	background: var(--panel-strong);
+	color: var(--text-main);
+}
+
+.form-grid textarea {
+	resize: vertical;
+	min-height: 2.5rem;
+}
+
+.form-grid input:focus-visible,
+.form-grid select:focus-visible,
+.form-grid textarea:focus-visible {
+	outline: 2px solid rgba(13, 125, 84, 0.35);
+	outline-offset: 1px;
+}
+
+.checkbox-row {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+}
+
+.checkbox-row input {
+	width: auto;
+}
+
+.inline-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.45rem;
+	margin-top: 0.2rem;
+}
+
+.form-grid .inline-actions {
+	grid-column: 1 / -1;
+}
+
+.table-wrap {
+	overflow: auto;
+	border: 1px solid rgba(26, 46, 37, 0.14);
+	border-radius: 9px;
+	background: rgba(255, 255, 255, 0.62);
+}
+
+.data-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.82rem;
+}
+
+.data-table th,
+.data-table td {
+	padding: 0.5rem 0.54rem;
+	border-bottom: 1px solid rgba(26, 46, 37, 0.1);
+	text-align: left;
+	vertical-align: top;
+}
+
+.data-table thead th {
+	background: rgba(224, 235, 229, 0.7);
+	font-weight: 700;
+	color: #204133;
+}
+
+.pill {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.14rem 0.46rem;
+	border-radius: 999px;
+	background: rgba(13, 125, 84, 0.16);
+	color: #124e39;
+	font-weight: 700;
+}
+
+.table-pre {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-size: 0.73rem;
+	line-height: 1.32;
+}
+
 .preview {
 	margin: 0;
 	padding: 0.75rem;
@@ -266,6 +462,12 @@ button.secondary {
 	overflow: auto;
 	font-size: 0.84rem;
 	line-height: 1.4;
+}
+
+.preview-inline {
+	min-height: 140px;
+	max-height: 320px;
+	margin-top: 0.6rem;
 }
 
 .toast {
@@ -300,6 +502,14 @@ button.secondary {
 	.nav-item {
 		text-align: center;
 	}
+
+	.workspace-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.form-grid-inline {
+		grid-template-columns: 1fr;
+	}
 }
 
 @media (max-width: 620px) {
@@ -309,6 +519,14 @@ button.secondary {
 
 	.nav-panel {
 		grid-template-columns: 1fr;
+	}
+
+	.project-chip-wrap {
+		justify-items: start;
+	}
+
+	.card.workspace-card > .card-header {
+		flex-direction: column;
 	}
 }
 

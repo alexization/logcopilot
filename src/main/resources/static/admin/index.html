@@ -44,9 +44,19 @@
 				<p id="auth-status" class="status-text" role="status">토큰이 아직 설정되지 않았습니다.</p>
 			</section>
 
-			<section class="card">
-				<h2 id="section-title">개요</h2>
-				<p id="section-description">T-20에서 도메인 화면이 이 영역으로 확장됩니다.</p>
+			<section class="card workspace-card">
+				<div class="card-header">
+					<div>
+						<h2 id="section-title">개요</h2>
+						<p id="section-description">T-20 운영 화면을 이 영역에서 수행합니다.</p>
+					</div>
+					<div class="project-chip-wrap" aria-live="polite">
+						<span class="chip-label">활성 프로젝트</span>
+						<code id="active-project-id">없음</code>
+					</div>
+				</div>
+				<p id="section-feedback" class="section-feedback">섹션을 선택하고 작업을 시작하세요.</p>
+				<div id="section-body" class="section-body"></div>
 			</section>
 
 			<section class="card">
