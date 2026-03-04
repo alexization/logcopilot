@@ -3,6 +3,7 @@ package com.logcopilot.common.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logcopilot.common.api.ApiErrorResponse;
 import com.logcopilot.common.auth.BearerTokenValidator;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,7 +42,8 @@ public class SecurityConfiguration {
 			.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers("/healthz", "/readyz").permitAll()
 				.requestMatchers("/v1/projects/*/llm-oauth/*/callback").permitAll()
-				.anyRequest().authenticated())
+				.requestMatchers("/v1/ingest/**").hasRole("INGEST")
+				.anyRequest().hasRole("API"))
 			.addFilterBefore(bearerAuthenticationFilter, AnonymousAuthenticationFilter.class);
 
 		return http.build();
@@ -60,7 +62,7 @@ public class SecurityConfiguration {
 		return (request, response, exception) -> writeError(
 			response,
 			HttpStatus.UNAUTHORIZED,
-			ApiErrorResponse.of("unauthorized", "Missing or invalid bearer token"),
+			ApiErrorResponse.of("unauthorized", unauthorizedMessage(request)),
 			objectMapper
 		);
 	}
@@ -88,5 +90,13 @@ public class SecurityConfiguration {
 		response.setStatus(status.value());
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 		objectMapper.writeValue(response.getOutputStream(), payload);
+	}
+
+	private String unauthorizedMessage(HttpServletRequest request) {
+		String path = request.getRequestURI();
+		if (path != null && path.startsWith("/v1/ingest/")) {
+			return "Missing or invalid ingest token";
+		}
+		return "Missing or invalid bearer token";
 	}
 }

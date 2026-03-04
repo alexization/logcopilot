@@ -51,11 +51,13 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
 		FilterChain filterChain
 	) throws ServletException, IOException {
 		try {
-			String token = bearerTokenValidator.validate(request.getHeader(HttpHeaders.AUTHORIZATION));
+			BearerTokenValidator.ValidatedToken validatedToken = bearerTokenValidator.validate(
+				request.getHeader(HttpHeaders.AUTHORIZATION)
+			);
 			UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-				token,
-				token,
-				List.of(new SimpleGrantedAuthority("ROLE_API"))
+				validatedToken.value(),
+				validatedToken.value(),
+				List.of(new SimpleGrantedAuthority(resolveAuthority(validatedToken)))
 			);
 			authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 			SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -68,5 +70,12 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
 				new BadCredentialsException(exception.getMessage(), exception)
 			);
 		}
+	}
+
+	private String resolveAuthority(BearerTokenValidator.ValidatedToken validatedToken) {
+		return switch (validatedToken.type()) {
+			case INGEST -> "ROLE_INGEST";
+			case API -> "ROLE_API";
+		};
 	}
 }

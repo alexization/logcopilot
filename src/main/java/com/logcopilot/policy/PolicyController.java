@@ -1,12 +1,10 @@
 package com.logcopilot.policy;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.BadRequestException;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,23 +16,16 @@ import java.util.List;
 public class PolicyController {
 
 	private final PolicyService policyService;
-	private final BearerTokenValidator bearerTokenValidator;
 
-	public PolicyController(
-		PolicyService policyService,
-		BearerTokenValidator bearerTokenValidator
-	) {
+	public PolicyController(PolicyService policyService) {
 		this.policyService = policyService;
-		this.bearerTokenValidator = bearerTokenValidator;
 	}
 
 	@PutMapping("/export")
 	public ExportPolicyResponse updateExportPolicy(
 		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestBody(required = false) ExportPolicyRequest request
 	) {
-		bearerTokenValidator.validate(authorization);
 		if (request == null) {
 			throw new BadRequestException("Malformed JSON request body");
 		}
@@ -49,10 +40,8 @@ public class PolicyController {
 	@PutMapping("/redaction")
 	public RedactionPolicyResponse updateRedactionPolicy(
 		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestBody(required = false) RedactionPolicyRequest request
 	) {
-		bearerTokenValidator.validate(authorization);
 		if (request == null) {
 			throw new BadRequestException("Malformed JSON request body");
 		}

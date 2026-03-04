@@ -97,8 +97,8 @@ class IngestEndpointsContractTest {
 	}
 
 	@Test
-	@DisplayName("POST /v1/ingest/events 는 인증 누락 시 401을 반환한다")
-	void ingestEventsRejectsMissingBearerToken() throws Exception {
+	@DisplayName("POST /v1/ingest/events 는 ingest 토큰 누락 시 401을 반환한다")
+	void ingestEventsRejectsMissingIngestToken() throws Exception {
 		String projectId = createProjectId("ingest-auth");
 
 		mockMvc.perform(post("/v1/ingest/events")
@@ -112,7 +112,7 @@ class IngestEndpointsContractTest {
 				)))
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.error.code").value("unauthorized"))
-			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid ingest token"));
 	}
 
 	@Test

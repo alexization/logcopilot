@@ -1,21 +1,13 @@
 package com.logcopilot.system;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.auth.BearerTokenValidator;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
 @RestController
 public class SystemController {
-
-	private final BearerTokenValidator bearerTokenValidator;
-
-	public SystemController(BearerTokenValidator bearerTokenValidator) {
-		this.bearerTokenValidator = bearerTokenValidator;
-	}
 
 	@GetMapping("/healthz")
 	public HealthResponse healthz() {
@@ -28,10 +20,7 @@ public class SystemController {
 	}
 
 	@GetMapping("/v1/system/info")
-	public SystemInfoResponse getSystemInfo(
-		@RequestHeader(value = "Authorization", required = false) String authorization
-	) {
-		bearerTokenValidator.validate(authorization);
+	public SystemInfoResponse getSystemInfo() {
 		return new SystemInfoResponse(
 			new SystemInfoData(
 				"1.0.0-mvp",
