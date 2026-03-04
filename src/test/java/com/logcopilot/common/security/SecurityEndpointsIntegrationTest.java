@@ -34,6 +34,7 @@ class SecurityEndpointsIntegrationTest {
 	@Test
 	@DisplayName("OAuth callback 엔드포인트는 인증 없이 접근 가능하다")
 	void oauthCallbackIsAccessibleWithoutAuthorization() throws Exception {
+		// 이 테스트는 보안 경계 확인이 목적이라, 인증 실패(401)만 아니면 허용한다.
 		mockMvc.perform(get("/v1/projects/{project_id}/llm-oauth/{provider}/callback", "project-1", "openai")
 				.queryParam("code", "oauth-code")
 				.queryParam("state", "oauth-state"))

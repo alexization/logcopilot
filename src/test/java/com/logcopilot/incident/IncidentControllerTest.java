@@ -8,6 +8,7 @@ import com.logcopilot.incident.domain.IncidentDetail;
 import com.logcopilot.incident.domain.IncidentStatus;
 import com.logcopilot.incident.domain.ReanalyzeAcceptedResult;
 import com.logcopilot.project.ProjectService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,11 @@ class IncidentControllerTest {
 
 	@MockBean
 	private BearerTokenValidator bearerTokenValidator;
+
+	@BeforeEach
+	void setUpAuthenticationStub() {
+		when(bearerTokenValidator.validate("Bearer token")).thenReturn("token");
+	}
 
 	@Test
 	@DisplayName("IncidentController는 incident의 project가 없으면 상세 조회에 404를 반환한다")
