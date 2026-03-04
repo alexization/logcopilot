@@ -127,13 +127,7 @@
 
 	function clearCachedData() {
 		state.projects = [];
-		state.activeProjectId = "";
-		state.llmAccounts = [];
-		state.incidents = [];
-		state.incidentMeta = null;
-		state.selectedIncident = null;
-		state.auditLogs = [];
-		state.auditMeta = null;
+		updateActiveProject("");
 	}
 
 	function validateRequiredElements() {
@@ -303,7 +297,7 @@
 					});
 					await refreshProjects();
 					if (created && created.data && created.data.id) {
-						state.activeProjectId = created.data.id;
+						updateActiveProject(created.data.id);
 						renderActiveProject();
 					}
 					setSectionFeedback("프로젝트가 생성되었습니다.", "success");
@@ -331,7 +325,7 @@
 		selectButtons.forEach((button) => {
 			button.addEventListener("click", () => {
 				const projectId = button.getAttribute("data-project-id") || "";
-				state.activeProjectId = projectId;
+				updateActiveProject(projectId);
 				renderActiveProject();
 				setSectionFeedback("활성 프로젝트를 선택했습니다: " + projectId, "success");
 				renderProjectsSection();
@@ -564,23 +558,27 @@
 
 		oauthButtons.forEach((button) => {
 			button.addEventListener("click", async () => {
+				const popup = window.open("", "_blank", "noopener,noreferrer");
 				try {
 					requireToken();
 					const provider = button.getAttribute("data-provider") || "openai";
 					const response = await apiClient.startLlmOAuth(projectId, provider);
 					const masked = maskOAuthStartResult(response);
-					const authUrl = response && response.data ? response.data.auth_url : null;
+					const authUrl = validateOAuthAuthUrl(response && response.data ? response.data.auth_url : null);
 					if (resultBox) {
 						resultBox.textContent = formatJson(masked);
 					}
-					if (authUrl) {
-						window.open(authUrl, "_blank", "noopener,noreferrer");
+					if (popup && !popup.closed) {
+						popup.location.replace(authUrl);
 						setSectionFeedback(provider + " OAuth 인증 페이지를 새 창으로 열었습니다.", "success");
 					} else {
-						setSectionFeedback(provider + " OAuth 시작 URL이 생성되었습니다.", "success");
+						setSectionFeedback(provider + " OAuth 팝업이 차단되어 URL을 미리보기로만 표시했습니다.", "error");
 					}
 					setPreview(masked);
 				} catch (error) {
+					if (popup && !popup.closed) {
+						popup.close();
+					}
 					handleSectionError("OAuth 시작 URL 생성에 실패했습니다.", error);
 				}
 			});
@@ -1079,12 +1077,12 @@
 
 	function reconcileActiveProject() {
 		if (state.projects.length === 0) {
-			state.activeProjectId = "";
+			updateActiveProject("");
 			return;
 		}
 		const exists = state.projects.some((project) => project && project.id === state.activeProjectId);
 		if (!exists) {
-			state.activeProjectId = state.projects[0] && state.projects[0].id ? state.projects[0].id : "";
+			updateActiveProject(state.projects[0] && state.projects[0].id ? state.projects[0].id : "");
 		}
 	}
 
@@ -1259,14 +1257,21 @@
 			return [];
 		}
 		return lines.map((line, index) => {
-			const tokens = line.split("|").map((token) => token.trim());
-			if (tokens.length < 3) {
+			const firstDelimiterIndex = line.indexOf("|");
+			const lastDelimiterIndex = line.lastIndexOf("|");
+			if (firstDelimiterIndex < 0 || lastDelimiterIndex <= firstDelimiterIndex) {
+				throw new Error("redaction rules 형식 오류 (line " + (index + 1) + "): name|pattern|replace_with");
+			}
+			const name = line.slice(0, firstDelimiterIndex).trim();
+			const pattern = line.slice(firstDelimiterIndex + 1, lastDelimiterIndex).trim();
+			const replaceWith = line.slice(lastDelimiterIndex + 1).trim();
+			if (!name || !pattern || !replaceWith) {
 				throw new Error("redaction rules 형식 오류 (line " + (index + 1) + "): name|pattern|replace_with");
 			}
 			return {
-				name: tokens[0],
-				pattern: tokens[1],
-				replace_with: tokens.slice(2).join("|")
+				name,
+				pattern,
+				replace_with: replaceWith
 			};
 		});
 	}
@@ -1324,6 +1329,24 @@
 
 	function selected(value, expected) {
 		return value === expected ? " selected" : "";
+	}
+
+	function resetProjectScopedState() {
+		state.llmAccounts = [];
+		state.incidents = [];
+		state.incidentMeta = null;
+		state.selectedIncident = null;
+		state.auditLogs = [];
+		state.auditMeta = null;
+	}
+
+	function updateActiveProject(projectId) {
+		const nextProjectId = projectId || "";
+		if (state.activeProjectId === nextProjectId) {
+			return;
+		}
+		state.activeProjectId = nextProjectId;
+		resetProjectScopedState();
 	}
 
 	function renderActiveProject() {
@@ -1486,6 +1509,23 @@
 			return "****";
 		}
 		return text.slice(0, 4) + "..." + text.slice(-4);
+	}
+
+	function validateOAuthAuthUrl(urlValue) {
+		if (!urlValue) {
+			throw new Error("OAuth 시작 URL이 비어 있습니다.");
+		}
+		let parsed;
+		try {
+			parsed = new URL(urlValue);
+		} catch (_error) {
+			throw new Error("OAuth 시작 URL 형식이 올바르지 않습니다.");
+		}
+		const protocol = parsed.protocol.toLowerCase();
+		if (protocol !== "http:" && protocol !== "https:") {
+			throw new Error("OAuth 시작 URL은 http/https 스킴이어야 합니다.");
+		}
+		return parsed.toString();
 	}
 
 	function escapeHtml(value) {
