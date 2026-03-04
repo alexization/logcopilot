@@ -2,12 +2,13 @@ package com.logcopilot.incident;
 
 import com.logcopilot.common.api.ApiMeta;
 import com.logcopilot.common.error.NotFoundException;
-import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.incident.domain.IncidentDetail;
 import com.logcopilot.incident.domain.IncidentListResult;
 import com.logcopilot.incident.domain.IncidentSummary;
 import com.logcopilot.incident.domain.ReanalyzeAcceptedResult;
 import com.logcopilot.project.ProjectService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -64,10 +65,9 @@ public class IncidentController {
 	@PostMapping("/incidents/{incident_id}/reanalyze")
 	public ResponseEntity<ReanalyzeResponse> reanalyzeIncident(
 		@PathVariable("incident_id") String incidentId,
-		@RequestBody(required = false) ReanalyzeRequest request
+		@Valid @RequestBody(required = false) ReanalyzeRequest request
 	) {
 		String reason = request == null ? null : request.reason();
-		validateReanalyzeReason(reason);
 
 		IncidentDetail detail = incidentService.getIncident(incidentId);
 		validateProjectExists(detail.projectId());
@@ -85,13 +85,10 @@ public class IncidentController {
 		}
 	}
 
-	private void validateReanalyzeReason(String reason) {
-		if (reason != null && reason.length() > 500) {
-			throw new ValidationException("reason must be at most 500 characters");
-		}
-	}
-
-	public record ReanalyzeRequest(String reason) {
+	public record ReanalyzeRequest(
+		@Size(max = 500, message = "reason must be at most 500 characters")
+		String reason
+	) {
 	}
 
 	public record IncidentListResponse(

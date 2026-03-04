@@ -16,8 +16,10 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -219,6 +221,27 @@ class IngestEndpointsContractTest {
 			.andExpect(status().isUnprocessableEntity())
 			.andExpect(jsonPath("$.error.code").value("validation_error"))
 			.andExpect(jsonPath("$.error.message").value("events must not contain null items"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/ingest/events 는 다중 검증 오류에서 details를 상한으로 제한한다")
+	void ingestEventsCapsValidationDetailsWhenErrorsAreLarge() throws Exception {
+		String projectId = createProjectId("ingest-validation-details-cap");
+		List<Map<String, Object>> noisyEvents = IntStream.range(0, 30)
+			.mapToObj(index -> Map.<String, Object>of())
+			.toList();
+
+		mockMvc.perform(post("/v1/ingest/events")
+				.header("Authorization", "Bearer ingest-token")
+				.header("Idempotency-Key", "idem-" + UUID.randomUUID())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(ingestEventsRequestBody(projectId, "loki", "batch-1", noisyEvents)))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("event_id must not be blank"))
+			.andExpect(jsonPath("$.error.details.length()").value(20))
+			.andExpect(jsonPath("$.error.details[19].field").value("_truncated"))
+			.andExpect(jsonPath("$.error.details[19].message", containsString("additional validation errors omitted")));
 	}
 
 	@Test

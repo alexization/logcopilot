@@ -99,6 +99,22 @@ class AlertEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("POST /v1/projects/{project_id}/alerts/slack 는 JSON null 본문이면 422를 반환한다")
+	void configureSlackReturns422OnNullJsonBody() throws Exception {
+		String projectId = createProjectId("alert-slack-null-body");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("null"))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("Request body must not be null"))
+			.andExpect(jsonPath("$.error.details[0].field").value("request"))
+			.andExpect(jsonPath("$.error.details[0].message").value("Request body must not be null"));
+	}
+
+	@Test
 	@DisplayName("POST /v1/projects/{project_id}/alerts/email 는 신규 설정 시 201을 반환한다")
 	void configureEmailReturns201OnCreate() throws Exception {
 		String projectId = createProjectId("alert-email-create");

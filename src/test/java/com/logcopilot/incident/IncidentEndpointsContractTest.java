@@ -272,7 +272,9 @@ class IncidentEndpointsContractTest {
 				.content("{\"reason\":\"" + reason + "\"}"))
 			.andExpect(status().isUnprocessableEntity())
 			.andExpect(jsonPath("$.error.code").value("validation_error"))
-			.andExpect(jsonPath("$.error.message").value("reason must be at most 500 characters"));
+			.andExpect(jsonPath("$.error.message").value("reason must be at most 500 characters"))
+			.andExpect(jsonPath("$.error.details[0].field").value("reason"))
+			.andExpect(jsonPath("$.error.details[0].message").value("reason must be at most 500 characters"));
 	}
 
 	private String createProjectId(String namePrefix) throws Exception {

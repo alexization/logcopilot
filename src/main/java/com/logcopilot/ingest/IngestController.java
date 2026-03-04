@@ -1,11 +1,15 @@
 package com.logcopilot.ingest;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.error.BadRequestException;
 import com.logcopilot.common.http.IdempotencyKeyValidator;
 import com.logcopilot.ingest.domain.CanonicalLogEvent;
 import com.logcopilot.ingest.domain.IngestAcceptedResult;
 import com.logcopilot.ingest.domain.IngestEventsCommand;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,10 +39,9 @@ public class IngestController {
 	@PostMapping("/events")
 	public ResponseEntity<IngestAcceptedResponse> ingestEvents(
 		@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-		@RequestBody IngestEventsRequest request
+		@Valid @RequestBody IngestEventsRequest request
 	) {
 		String validatedIdempotencyKey = idempotencyKeyValidator.validateRequired(idempotencyKey);
-		validateRequestBody(request);
 
 		IngestAcceptedResult accepted = ingestService.ingestEvents(
 			validatedIdempotencyKey,
@@ -106,28 +109,37 @@ public class IngestController {
 		);
 	}
 
-	private void validateRequestBody(IngestEventsRequest request) {
-		if (request == null) {
-			throw new BadRequestException("Malformed JSON request body");
-		}
-	}
-
 	public record IngestEventsRequest(
+		@NotBlank(message = "project_id is required")
 		@JsonProperty("project_id")
 		String projectId,
+		@NotBlank(message = "source must be one of: loki, otlp, custom")
+		@Pattern(regexp = "loki|otlp|custom", message = "source must be one of: loki, otlp, custom")
 		String source,
+		@NotBlank(message = "batch_id must not be blank")
 		@JsonProperty("batch_id")
 		String batchId,
-		List<CanonicalLogEventRequest> events
+		@NotNull(message = "events size must be between 1 and 5000")
+		@Size(min = 1, max = 5000, message = "events size must be between 1 and 5000")
+		List<@NotNull(message = "events must not contain null items") @Valid CanonicalLogEventRequest> events
 	) {
 	}
 
 	public record CanonicalLogEventRequest(
+		@NotBlank(message = "event_id must not be blank")
 		@JsonProperty("event_id")
 		String eventId,
+		@NotBlank(message = "timestamp must be RFC3339 date-time")
 		String timestamp,
+		@NotBlank(message = "service must not be blank")
 		String service,
+		@NotBlank(message = "severity must be one of: debug, info, warn, error, fatal")
+		@Pattern(
+			regexp = "debug|info|warn|error|fatal",
+			message = "severity must be one of: debug, info, warn, error, fatal"
+		)
 		String severity,
+		@NotBlank(message = "message must not be blank")
 		String message,
 		@JsonProperty("trace_id")
 		String traceId,
