@@ -1,7 +1,6 @@
 package com.logcopilot.incident;
 
 import com.logcopilot.common.api.ApiMeta;
-import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.incident.domain.IncidentDetail;
@@ -14,7 +13,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,28 +26,23 @@ public class IncidentController {
 
 	private final IncidentService incidentService;
 	private final ProjectService projectService;
-	private final BearerTokenValidator bearerTokenValidator;
 
 	public IncidentController(
 		IncidentService incidentService,
-		ProjectService projectService,
-		BearerTokenValidator bearerTokenValidator
+		ProjectService projectService
 	) {
 		this.incidentService = incidentService;
 		this.projectService = projectService;
-		this.bearerTokenValidator = bearerTokenValidator;
 	}
 
 	@GetMapping("/projects/{project_id}/incidents")
 	public IncidentListResponse listIncidents(
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@PathVariable("project_id") String projectId,
 		@RequestParam(value = "status", required = false) String status,
 		@RequestParam(value = "service", required = false) String service,
 		@RequestParam(value = "cursor", required = false) String cursor,
 		@RequestParam(value = "limit", required = false) Integer limit
 	) {
-		bearerTokenValidator.validate(authorization);
 		validateProjectExists(projectId);
 
 		IncidentListResult result = incidentService.list(projectId, status, service, cursor, limit);
@@ -61,10 +54,8 @@ public class IncidentController {
 
 	@GetMapping("/incidents/{incident_id}")
 	public IncidentDetailResponse getIncident(
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@PathVariable("incident_id") String incidentId
 	) {
-		bearerTokenValidator.validate(authorization);
 		IncidentDetail detail = incidentService.getIncident(incidentId);
 		validateProjectExists(detail.projectId());
 		return new IncidentDetailResponse(detail);
@@ -72,11 +63,9 @@ public class IncidentController {
 
 	@PostMapping("/incidents/{incident_id}/reanalyze")
 	public ResponseEntity<ReanalyzeResponse> reanalyzeIncident(
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@PathVariable("incident_id") String incidentId,
 		@RequestBody(required = false) ReanalyzeRequest request
 	) {
-		bearerTokenValidator.validate(authorization);
 		String reason = request == null ? null : request.reason();
 		validateReanalyzeReason(reason);
 

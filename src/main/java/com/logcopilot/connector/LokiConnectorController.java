@@ -1,14 +1,12 @@
 package com.logcopilot.connector;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.BadRequestException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,23 +17,16 @@ import java.time.Instant;
 public class LokiConnectorController {
 
 	private final LokiConnectorService lokiConnectorService;
-	private final BearerTokenValidator bearerTokenValidator;
 
-	public LokiConnectorController(
-		LokiConnectorService lokiConnectorService,
-		BearerTokenValidator bearerTokenValidator
-	) {
+	public LokiConnectorController(LokiConnectorService lokiConnectorService) {
 		this.lokiConnectorService = lokiConnectorService;
-		this.bearerTokenValidator = bearerTokenValidator;
 	}
 
 	@PostMapping
 	public ResponseEntity<ConnectorResponse> upsertLokiConnector(
 		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestBody LokiConnectorRequest request
 	) {
-		bearerTokenValidator.validate(authorization);
 		validateRequestBody(request);
 
 		LokiConnectorService.UpsertResult result = lokiConnectorService.upsert(
@@ -70,11 +61,8 @@ public class LokiConnectorController {
 
 	@PostMapping("/test")
 	public LokiTestResponse testLokiConnector(
-		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization
+		@PathVariable("project_id") String projectId
 	) {
-		bearerTokenValidator.validate(authorization);
-
 		LokiConnectorService.LokiTestResult result = lokiConnectorService.test(projectId);
 		return new LokiTestResponse(
 			new LokiTestData(

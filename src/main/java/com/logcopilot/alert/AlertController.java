@@ -2,15 +2,14 @@ package com.logcopilot.alert;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.logcopilot.common.api.ApiMeta;
-import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.ValidationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,23 +23,18 @@ import java.util.Map;
 public class AlertController {
 
 	private final AlertService alertService;
-	private final BearerTokenValidator bearerTokenValidator;
 
-	public AlertController(
-		AlertService alertService,
-		BearerTokenValidator bearerTokenValidator
-	) {
+	public AlertController(AlertService alertService) {
 		this.alertService = alertService;
-		this.bearerTokenValidator = bearerTokenValidator;
 	}
 
 	@PostMapping("/alerts/slack")
 	public ResponseEntity<AlertChannelResponse> configureSlack(
 		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization,
-		@RequestBody(required = false) SlackAlertRequest request
+		@RequestBody(required = false) SlackAlertRequest request,
+		Authentication authentication
 	) {
-		String actorToken = bearerTokenValidator.validate(authorization);
+		String actorToken = authentication.getName();
 		if (request == null) {
 			throw new ValidationException("Request body must not be null");
 		}
@@ -60,10 +54,10 @@ public class AlertController {
 	@PostMapping("/alerts/email")
 	public ResponseEntity<AlertChannelResponse> configureEmail(
 		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization,
-		@RequestBody(required = false) EmailAlertRequest request
+		@RequestBody(required = false) EmailAlertRequest request,
+		Authentication authentication
 	) {
-		String actorToken = bearerTokenValidator.validate(authorization);
+		String actorToken = authentication.getName();
 		if (request == null) {
 			throw new ValidationException("Request body must not be null");
 		}
@@ -92,14 +86,11 @@ public class AlertController {
 	@GetMapping("/audit-logs")
 	public AuditLogListResponse listAuditLogs(
 		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestParam(value = "action", required = false) String action,
 		@RequestParam(value = "actor", required = false) String actor,
 		@RequestParam(value = "cursor", required = false) String cursor,
 		@RequestParam(value = "limit", required = false) Integer limit
 	) {
-		bearerTokenValidator.validate(authorization);
-
 		AlertService.AuditLogListResult result = alertService.listAuditLogs(
 			projectId,
 			new AlertService.AuditLogQuery(action, actor, cursor, limit)

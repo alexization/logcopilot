@@ -1,7 +1,6 @@
 package com.logcopilot.llm;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.BadRequestException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,7 +9,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,23 +21,16 @@ import java.util.List;
 public class LlmAccountController {
 
 	private final LlmAccountService llmAccountService;
-	private final BearerTokenValidator bearerTokenValidator;
 
-	public LlmAccountController(
-		LlmAccountService llmAccountService,
-		BearerTokenValidator bearerTokenValidator
-	) {
+	public LlmAccountController(LlmAccountService llmAccountService) {
 		this.llmAccountService = llmAccountService;
-		this.bearerTokenValidator = bearerTokenValidator;
 	}
 
 	@PostMapping("/llm-accounts/api-key")
 	public ResponseEntity<LlmAccountResponse> upsertApiKeyLlmAccount(
 		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestBody LlmApiKeyAccountRequest request
 	) {
-		bearerTokenValidator.validate(authorization);
 		validateApiKeyRequestBody(request);
 
 		LlmAccountService.UpsertResult result = llmAccountService.upsertApiKey(
@@ -61,11 +52,8 @@ public class LlmAccountController {
 	@PostMapping("/llm-oauth/{provider}/start")
 	public OAuthStartResponse startLlmOAuth(
 		@PathVariable("project_id") String projectId,
-		@PathVariable("provider") String provider,
-		@RequestHeader(value = "Authorization", required = false) String authorization
+		@PathVariable("provider") String provider
 	) {
-		bearerTokenValidator.validate(authorization);
-
 		LlmAccountService.OAuthStartResult result = llmAccountService.startOAuth(projectId, provider);
 		return new OAuthStartResponse(new OAuthStartData(result.authUrl(), result.state()));
 	}
@@ -87,11 +75,7 @@ public class LlmAccountController {
 	}
 
 	@GetMapping("/llm-accounts")
-	public LlmAccountListResponse listLlmAccounts(
-		@PathVariable("project_id") String projectId,
-		@RequestHeader(value = "Authorization", required = false) String authorization
-	) {
-		bearerTokenValidator.validate(authorization);
+	public LlmAccountListResponse listLlmAccounts(@PathVariable("project_id") String projectId) {
 		List<LlmAccountData> data = llmAccountService.list(projectId).stream()
 			.map(this::toData)
 			.toList();
@@ -101,10 +85,8 @@ public class LlmAccountController {
 	@DeleteMapping("/llm-accounts/{account_id}")
 	public ResponseEntity<Void> deleteLlmAccount(
 		@PathVariable("project_id") String projectId,
-		@PathVariable("account_id") String accountId,
-		@RequestHeader(value = "Authorization", required = false) String authorization
+		@PathVariable("account_id") String accountId
 	) {
-		bearerTokenValidator.validate(authorization);
 		llmAccountService.delete(projectId, accountId);
 		return ResponseEntity.noContent().build();
 	}

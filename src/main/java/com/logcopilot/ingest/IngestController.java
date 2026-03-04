@@ -1,7 +1,6 @@
 package com.logcopilot.ingest;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.logcopilot.common.auth.BearerTokenValidator;
 import com.logcopilot.common.error.BadRequestException;
 import com.logcopilot.common.http.IdempotencyKeyValidator;
 import com.logcopilot.ingest.domain.CanonicalLogEvent;
@@ -23,26 +22,21 @@ import java.util.Map;
 public class IngestController {
 
 	private final IngestService ingestService;
-	private final BearerTokenValidator bearerTokenValidator;
 	private final IdempotencyKeyValidator idempotencyKeyValidator;
 
 	public IngestController(
 		IngestService ingestService,
-		BearerTokenValidator bearerTokenValidator,
 		IdempotencyKeyValidator idempotencyKeyValidator
 	) {
 		this.ingestService = ingestService;
-		this.bearerTokenValidator = bearerTokenValidator;
 		this.idempotencyKeyValidator = idempotencyKeyValidator;
 	}
 
 	@PostMapping("/events")
 	public ResponseEntity<IngestAcceptedResponse> ingestEvents(
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
 		@RequestBody IngestEventsRequest request
 	) {
-		bearerTokenValidator.validate(authorization);
 		String validatedIdempotencyKey = idempotencyKeyValidator.validateRequired(idempotencyKey);
 		validateRequestBody(request);
 
@@ -55,11 +49,9 @@ public class IngestController {
 
 	@PostMapping(value = "/otlp/logs", consumes = "application/x-protobuf")
 	public ResponseEntity<IngestAcceptedResponse> ingestOtlpLogs(
-		@RequestHeader(value = "Authorization", required = false) String authorization,
 		@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
 		@RequestBody(required = false) byte[] payload
 	) {
-		bearerTokenValidator.validate(authorization);
 		String validatedIdempotencyKey = idempotencyKeyValidator.validateRequired(idempotencyKey);
 
 		IngestAcceptedResult accepted = ingestService.ingestOtlpLogs(validatedIdempotencyKey, payload);

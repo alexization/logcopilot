@@ -52,4 +52,42 @@ class SecurityEndpointsIntegrationTest {
 			.andExpect(jsonPath("$.error.code").value("unauthorized"))
 			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
 	}
+
+	@Test
+	@DisplayName("ingest 토큰으로 일반 API 접근 시 403을 반환한다")
+	void apiEndpointsReturn403ForIngestToken() throws Exception {
+		mockMvc.perform(get("/v1/system/info")
+				.header("Authorization", "Bearer ingest-token"))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error.code").value("forbidden"))
+			.andExpect(jsonPath("$.error.message").value("Access denied"));
+	}
+
+	@Test
+	@DisplayName("일반 bearer 토큰으로 ingest API 접근 시 403을 반환한다")
+	void ingestEndpointsReturn403ForBearerToken() throws Exception {
+		mockMvc.perform(post("/v1/ingest/events")
+				.header("Authorization", "Bearer api-token")
+				.header("Idempotency-Key", "idem-security-1")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "project_id": "project-1",
+					  "source": "loki",
+					  "batch_id": "batch-1",
+					  "events": [
+					    {
+					      "event_id": "evt-1",
+					      "timestamp": "2026-03-03T03:00:00Z",
+					      "service": "api",
+					      "severity": "error",
+					      "message": "failure"
+					    }
+					  ]
+					}
+					"""))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.error.code").value("forbidden"))
+			.andExpect(jsonPath("$.error.message").value("Access denied"));
+	}
 }
