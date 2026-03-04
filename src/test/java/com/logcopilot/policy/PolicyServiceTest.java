@@ -221,6 +221,20 @@ class PolicyServiceTest {
 	}
 
 	@Test
+	@DisplayName("PolicyService는 redaction policy에 활성 규칙이 없으면 LLM 전송 텍스트 redaction을 거부한다")
+	void redactForLlmThrowsWhenNoActiveRules() {
+		ProjectDto project = projectService.create("policy-redact-llm-no-rules", "prod");
+		policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(true, List.of())
+		);
+
+		assertThatThrownBy(() -> policyService.redactForLlm(project.id(), "token=abc"))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessage("Redaction policy has no active rules");
+	}
+
+	@Test
 	@DisplayName("PolicyService는 redaction 결과에 민감정보가 남아 있으면 LLM 전송 텍스트를 거부한다")
 	void redactForLlmRejectsUnmaskedSensitiveValues() {
 		ProjectDto project = projectService.create("policy-redact-llm-unmasked", "prod");

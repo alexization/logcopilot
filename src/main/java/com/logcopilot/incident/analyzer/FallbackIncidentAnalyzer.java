@@ -16,7 +16,8 @@ public class FallbackIncidentAnalyzer {
 		List<String> nextActions = sanitizeTextList(ruleReport.nextActions());
 
 		List<String> limitations = new ArrayList<>(sanitizeTextList(ruleReport.limitations()));
-		limitations.add("LLM analysis unavailable; fallback report generated (" + reasonCode + ")");
+		String sanitizedReasonCode = sanitizeReasonCode(reasonCode);
+		limitations.add("LLM analysis unavailable; fallback report generated (" + sanitizedReasonCode + ")");
 
 		return new AnalysisReport(
 			SensitiveDataSanitizer.sanitize(ruleReport.summary()),
@@ -47,5 +48,18 @@ public class FallbackIncidentAnalyzer {
 		return values.stream()
 			.map(SensitiveDataSanitizer::sanitize)
 			.toList();
+	}
+
+	private String sanitizeReasonCode(String reasonCode) {
+		if (reasonCode == null || reasonCode.isBlank()) {
+			return "unknown";
+		}
+		String sanitized = reasonCode.trim()
+			.replaceAll("[\\r\\n\\t]", "_")
+			.replaceAll("[^a-zA-Z0-9_-]", "_");
+		if (sanitized.length() > 64) {
+			return sanitized.substring(0, 64);
+		}
+		return sanitized;
 	}
 }

@@ -9,6 +9,9 @@ public final class SensitiveDataSanitizer {
 	private static final Pattern QUOTED_KEY_VALUE_PATTERN = Pattern.compile(
 		"(?i)(\"(?:token|password|secret)\"\\s*:\\s*\")([^\"]*)(\")"
 	);
+	private static final Pattern JSON_LITERAL_KEY_VALUE_PATTERN = Pattern.compile(
+		"(?i)(\"(?:token|password|secret)\"\\s*:\\s*)(true|false|null|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+	);
 	private static final Pattern KEY_VALUE_PATTERN = Pattern.compile(
 		"(?i)(\\b(?:token|password|secret)\\b\\s*[:=]\\s*)([^\\s,;}]+)"
 	);
@@ -26,6 +29,8 @@ public final class SensitiveDataSanitizer {
 
 		String sanitized = QUOTED_KEY_VALUE_PATTERN.matcher(text)
 			.replaceAll("$1[REDACTED]$3");
+		sanitized = JSON_LITERAL_KEY_VALUE_PATTERN.matcher(sanitized)
+			.replaceAll("$1\"[REDACTED]\"");
 		sanitized = KEY_VALUE_PATTERN.matcher(sanitized)
 			.replaceAll("$1[REDACTED]");
 		return BEARER_PATTERN.matcher(sanitized)
@@ -37,6 +42,7 @@ public final class SensitiveDataSanitizer {
 			return false;
 		}
 		return hasUnmaskedValue(QUOTED_KEY_VALUE_PATTERN.matcher(text))
+			|| hasUnmaskedValue(JSON_LITERAL_KEY_VALUE_PATTERN.matcher(text))
 			|| hasUnmaskedValue(KEY_VALUE_PATTERN.matcher(text))
 			|| hasUnmaskedValue(BEARER_PATTERN.matcher(text));
 	}

@@ -54,7 +54,7 @@ public class LlmIncidentAnalyzer {
 		);
 
 		List<String> evidence = new ArrayList<>();
-		evidence.add("LLM model: " + account.provider() + "/" + account.model());
+		evidence.add(redactForLlm(command.projectId(), "LLM model: " + account.provider() + "/" + account.model()));
 		evidence.add("Reanalysis reason: " + redactedReason);
 		if (!hypotheses.isEmpty() && hypotheses.get(0).evidence() != null) {
 			hypotheses.get(0).evidence()

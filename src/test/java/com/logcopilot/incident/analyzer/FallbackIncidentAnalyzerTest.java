@@ -30,6 +30,8 @@ class FallbackIncidentAnalyzerTest {
 		AnalysisReport result = fallbackAnalyzer.fromRule(ruleReport, "llm_failure");
 		String flattened = result.summary()
 			+ " "
+			+ result.hypotheses().get(0).cause()
+			+ " "
 			+ String.join(" ", result.hypotheses().get(0).evidence())
 			+ " "
 			+ String.join(" ", result.nextActions())
