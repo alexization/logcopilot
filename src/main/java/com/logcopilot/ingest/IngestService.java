@@ -35,23 +35,36 @@ public class IngestService {
 	}
 
 	public IngestAcceptedResult ingestEvents(String idempotencyKey, IngestEventsCommand request) {
-		return idempotencyStore.computeIfAbsent(idempotencyKey, ignored -> {
-			boolean projectExists = projectService.existsById(request.projectId());
-			ingestRequestValidator.validate(request, projectExists);
-			int receivedEvents = request.events().size();
-			int deduplicatedEvents = eventDeduplicationPolicy.countDeduplicatedEvents(request.events());
-			incidentService.recordIngestedEvents(request.projectId(), request.events());
+		return idempotencyStore.computeIfAbsent(idempotencyKey, ignored -> ingestIntoCanonicalPipeline(request));
+	}
 
-			return new IngestAcceptedResult(
-				true,
-				UUID.randomUUID().toString(),
-				receivedEvents,
-				deduplicatedEvents
-			);
-		});
+	public IngestAcceptedResult ingestPulledEvents(IngestEventsCommand request) {
+		String idempotencyKey = pullIdempotencyKey(request);
+		return idempotencyStore.computeIfAbsent(idempotencyKey, ignored -> ingestIntoCanonicalPipeline(request));
 	}
 
 	public IngestAcceptedResult ingestOtlpLogs(String idempotencyKey, byte[] payload) {
 		throw new NotImplementedException("OTLP ingest endpoint is reserved in MVP");
+	}
+
+	private IngestAcceptedResult ingestIntoCanonicalPipeline(IngestEventsCommand request) {
+		boolean projectExists = projectService.existsById(request.projectId());
+		ingestRequestValidator.validate(request, projectExists);
+		int receivedEvents = request.events().size();
+		int deduplicatedEvents = eventDeduplicationPolicy.countDeduplicatedEvents(request.events());
+		incidentService.recordIngestedEvents(request.projectId(), request.events());
+
+		return new IngestAcceptedResult(
+			true,
+			UUID.randomUUID().toString(),
+			receivedEvents,
+			deduplicatedEvents
+		);
+	}
+
+	private String pullIdempotencyKey(IngestEventsCommand request) {
+		String projectId = request == null || request.projectId() == null ? "unknown-project" : request.projectId().trim();
+		String batchId = request == null || request.batchId() == null ? "unknown-batch" : request.batchId().trim();
+		return "pull:" + projectId + ":" + batchId;
 	}
 }

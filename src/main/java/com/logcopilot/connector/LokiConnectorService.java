@@ -12,7 +12,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -76,6 +78,14 @@ public class LokiConnectorService {
 
 		// TODO(T-04): 하드코딩 응답 대신 실제 Loki 조회 결과를 반환해야 한다.
 		return new LokiTestResult(true, 12, 37, "Loki connector test succeeded");
+	}
+
+	public synchronized Optional<LokiConnector> findByProjectId(String projectId) {
+		return Optional.ofNullable(connectorByProjectId.get(projectId));
+	}
+
+	public synchronized List<String> listConfiguredProjectIds() {
+		return List.copyOf(connectorByProjectId.keySet());
 	}
 
 	private void requireProject(String projectId) {
