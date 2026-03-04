@@ -18,7 +18,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Locale;
 import java.util.regex.Pattern;
 
 public class BearerAuthenticationFilter extends OncePerRequestFilter {
@@ -52,11 +51,13 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
 		FilterChain filterChain
 	) throws ServletException, IOException {
 		try {
-			String token = bearerTokenValidator.validate(request.getHeader(HttpHeaders.AUTHORIZATION));
+			BearerTokenValidator.ValidatedToken validatedToken = bearerTokenValidator.validate(
+				request.getHeader(HttpHeaders.AUTHORIZATION)
+			);
 			UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-				token,
-				token,
-				List.of(new SimpleGrantedAuthority(resolveAuthority(token)))
+				validatedToken.value(),
+				validatedToken.value(),
+				List.of(new SimpleGrantedAuthority(resolveAuthority(validatedToken)))
 			);
 			authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 			SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -71,11 +72,10 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
 		}
 	}
 
-	private String resolveAuthority(String token) {
-		// T-13 범위에서는 endpoint-level 권한 분리를 위해 ingest 토큰 접두사 규칙을 사용한다.
-		if (token.toLowerCase(Locale.ROOT).startsWith("ingest-")) {
-			return "ROLE_INGEST";
-		}
-		return "ROLE_API";
+	private String resolveAuthority(BearerTokenValidator.ValidatedToken validatedToken) {
+		return switch (validatedToken.type()) {
+			case INGEST -> "ROLE_INGEST";
+			case API -> "ROLE_API";
+		};
 	}
 }

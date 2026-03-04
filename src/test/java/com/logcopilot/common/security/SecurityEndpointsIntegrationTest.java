@@ -90,4 +90,14 @@ class SecurityEndpointsIntegrationTest {
 			.andExpect(jsonPath("$.error.code").value("forbidden"))
 			.andExpect(jsonPath("$.error.message").value("Access denied"));
 	}
+
+	@Test
+	@DisplayName("등록되지 않은 bearer 토큰은 401로 차단한다")
+	void unknownBearerTokenReturns401() throws Exception {
+		mockMvc.perform(get("/v1/system/info")
+				.header("Authorization", "Bearer unknown-token"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
 }

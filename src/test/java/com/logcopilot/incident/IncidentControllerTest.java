@@ -47,7 +47,8 @@ class IncidentControllerTest {
 
 	@BeforeEach
 	void setUpAuthenticationStub() {
-		when(bearerTokenValidator.validate("Bearer token")).thenReturn("token");
+		when(bearerTokenValidator.validate("Bearer token"))
+			.thenReturn(new BearerTokenValidator.ValidatedToken("token", BearerTokenValidator.TokenType.API));
 	}
 
 	@Test

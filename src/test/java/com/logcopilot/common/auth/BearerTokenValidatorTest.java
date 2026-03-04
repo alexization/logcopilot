@@ -12,11 +12,21 @@ class BearerTokenValidatorTest {
 	private final BearerTokenValidator validator = new BearerTokenValidator();
 
 	@Test
-	@DisplayName("BearerTokenValidator는 유효한 bearer 토큰을 반환한다")
-	void returnsTokenWhenAuthorizationHeaderIsValid() {
-		String token = validator.validate("Bearer test-token");
+	@DisplayName("BearerTokenValidator는 검증된 API 토큰을 반환한다")
+	void returnsValidatedApiTokenWhenAuthorizationHeaderIsValid() {
+		BearerTokenValidator.ValidatedToken token = validator.validate("Bearer test-token");
 
-		assertThat(token).isEqualTo("test-token");
+		assertThat(token.value()).isEqualTo("test-token");
+		assertThat(token.type()).isEqualTo(BearerTokenValidator.TokenType.API);
+	}
+
+	@Test
+	@DisplayName("BearerTokenValidator는 검증된 ingest 토큰을 반환한다")
+	void returnsValidatedIngestTokenWhenAuthorizationHeaderIsValid() {
+		BearerTokenValidator.ValidatedToken token = validator.validate("Bearer ingest-token");
+
+		assertThat(token.value()).isEqualTo("ingest-token");
+		assertThat(token.type()).isEqualTo(BearerTokenValidator.TokenType.INGEST);
 	}
 
 	@Test
@@ -47,6 +57,14 @@ class BearerTokenValidatorTest {
 	@DisplayName("BearerTokenValidator는 토큰 뒤에 추가 세그먼트가 있으면 예외를 던진다")
 	void throwsWhenAuthorizationHasMultipleSegments() {
 		assertThatThrownBy(() -> validator.validate("Bearer token extra"))
+			.isInstanceOf(UnauthorizedException.class)
+			.hasMessage("Missing or invalid bearer token");
+	}
+
+	@Test
+	@DisplayName("BearerTokenValidator는 등록되지 않은 토큰이면 예외를 던진다")
+	void throwsWhenTokenIsNotRegistered() {
+		assertThatThrownBy(() -> validator.validate("Bearer unknown-token"))
 			.isInstanceOf(UnauthorizedException.class)
 			.hasMessage("Missing or invalid bearer token");
 	}
