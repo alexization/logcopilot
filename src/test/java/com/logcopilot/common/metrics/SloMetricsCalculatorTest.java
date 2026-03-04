@@ -47,6 +47,30 @@ class SloMetricsCalculatorTest {
 	}
 
 	@Test
+	@DisplayName("percentile 값이 0이면 예외를 던진다")
+	void percentileMillisThrowsWhenPercentileIsZero() {
+		assertThatThrownBy(() -> SloMetricsCalculator.percentileMillis(List.of(1L, 2L), 0.0))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("percentile must be in range");
+	}
+
+	@Test
+	@DisplayName("percentile 값이 100이면 최댓값을 반환한다")
+	void percentileMillisReturnsMaxWhenPercentileIs100() {
+		long p100 = SloMetricsCalculator.percentileMillis(List.of(1L, 5L, 3L), 100.0);
+
+		assertThat(p100).isEqualTo(5L);
+	}
+
+	@Test
+	@DisplayName("단일 요소 리스트는 해당 요소를 반환한다")
+	void percentileMillisReturnsSingleElement() {
+		long p95 = SloMetricsCalculator.percentileMillis(List.of(42L), 95.0);
+
+		assertThat(p95).isEqualTo(42L);
+	}
+
+	@Test
 	@DisplayName("샘플에 null 값이 있으면 예외를 던진다")
 	void percentileMillisThrowsWhenSamplesContainNull() {
 		assertThatThrownBy(() -> SloMetricsCalculator.percentileMillis(Arrays.asList(1L, null, 2L), 95.0))
