@@ -66,8 +66,7 @@ public class LokiConnectorService {
 				pollIntervalSeconds,
 				Instant.now()
 			);
-			connectorByProjectId.put(projectId, created);
-			persistState();
+			persistUpsertedConnector(projectId, created, null);
 			return new UpsertResult(true, created);
 		}
 
@@ -80,8 +79,7 @@ public class LokiConnectorService {
 			pollIntervalSeconds,
 			Instant.now()
 		);
-		connectorByProjectId.put(projectId, updated);
-		persistState();
+		persistUpsertedConnector(projectId, updated, existing);
 		return new UpsertResult(false, updated);
 	}
 
@@ -250,6 +248,20 @@ public class LokiConnectorService {
 			SNAPSHOT_SCOPE,
 			new LokiConnectorSnapshot(new HashMap<>(connectorByProjectId))
 		);
+	}
+
+	private void persistUpsertedConnector(String projectId, LokiConnector current, LokiConnector previous) {
+		connectorByProjectId.put(projectId, current);
+		try {
+			persistState();
+		} catch (RuntimeException exception) {
+			if (previous == null) {
+				connectorByProjectId.remove(projectId);
+			} else {
+				connectorByProjectId.put(projectId, previous);
+			}
+			throw exception;
+		}
 	}
 
 	record LokiConnectorSnapshot(Map<String, LokiConnector> connectorByProjectId) {

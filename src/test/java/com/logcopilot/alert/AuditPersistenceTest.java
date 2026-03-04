@@ -24,10 +24,11 @@ class AuditPersistenceTest {
 	void keepsAuditLogsAppendOnlyAcrossRestart() {
 		Path dbPath = tempDir.resolve("logcopilot-t21-audit.sqlite");
 		deleteIfExists(dbPath);
+		String encryptionSecret = "ephemeral-" + UUID.randomUUID();
 		String projectId;
 		List<String> firstLogIds;
 
-		try (ConfigurableApplicationContext context = startContext(dbPath)) {
+		try (ConfigurableApplicationContext context = startContext(dbPath, encryptionSecret)) {
 			ProjectService projectService = context.getBean(ProjectService.class);
 			AlertService alertService = context.getBean(AlertService.class);
 
@@ -62,7 +63,7 @@ class AuditPersistenceTest {
 			assertThat(firstLogIds).hasSize(2);
 		}
 
-		try (ConfigurableApplicationContext context = startContext(dbPath)) {
+		try (ConfigurableApplicationContext context = startContext(dbPath, encryptionSecret)) {
 			AlertService alertService = context.getBean(AlertService.class);
 			List<AlertService.AuditLog> restored = alertService.listAuditLogs(
 				projectId,
@@ -94,14 +95,14 @@ class AuditPersistenceTest {
 		}
 	}
 
-	private ConfigurableApplicationContext startContext(Path dbPath) {
+	private ConfigurableApplicationContext startContext(Path dbPath, String encryptionSecret) {
 		return new SpringApplicationBuilder(LogcopilotApplication.class)
 			.run(
 				"--server.port=0",
 				"--spring.task.scheduling.enabled=false",
 				"--logcopilot.persistence.enabled=true",
-				"--logcopilot.persistence.sqlite.path=" + dbPath.toAbsolutePath(),
-				"--logcopilot.persistence.encryption-key=t21-test-encryption-key"
+				"--logcopilot.persistence.sqlite-path=" + dbPath.toAbsolutePath(),
+				"--logcopilot.persistence.encryption-key=" + encryptionSecret
 			);
 	}
 

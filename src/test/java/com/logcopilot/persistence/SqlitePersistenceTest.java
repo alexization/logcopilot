@@ -35,9 +35,10 @@ class SqlitePersistenceTest {
 	void restoresCoreStateAcrossRestart() {
 		Path dbPath = tempDir.resolve("logcopilot-t21-restart.sqlite");
 		deleteIfExists(dbPath);
+		String encryptionSecret = "ephemeral-" + UUID.randomUUID();
 		String projectId;
 
-		try (ConfigurableApplicationContext context = startContext(dbPath)) {
+		try (ConfigurableApplicationContext context = startContext(dbPath, encryptionSecret)) {
 			ProjectService projectService = context.getBean(ProjectService.class);
 			LokiConnectorService connectorService = context.getBean(LokiConnectorService.class);
 			LlmAccountService llmAccountService = context.getBean(LlmAccountService.class);
@@ -81,7 +82,7 @@ class SqlitePersistenceTest {
 			cursorStore.commit(projectId, 42L);
 		}
 
-		try (ConfigurableApplicationContext context = startContext(dbPath)) {
+		try (ConfigurableApplicationContext context = startContext(dbPath, encryptionSecret)) {
 			ProjectService projectService = context.getBean(ProjectService.class);
 			LokiConnectorService connectorService = context.getBean(LokiConnectorService.class);
 			LlmAccountService llmAccountService = context.getBean(LlmAccountService.class);
@@ -108,10 +109,11 @@ class SqlitePersistenceTest {
 	void storesSecretsEncryptedAndIngestTokensAsHashes() throws Exception {
 		Path dbPath = tempDir.resolve("logcopilot-t21-secret.sqlite");
 		deleteIfExists(dbPath);
+		String encryptionSecret = "ephemeral-" + UUID.randomUUID();
 		String projectId;
 		Path[] effectiveDbPath = new Path[] { dbPath };
 
-		try (ConfigurableApplicationContext context = startContext(dbPath)) {
+		try (ConfigurableApplicationContext context = startContext(dbPath, encryptionSecret)) {
 			ProjectService projectService = context.getBean(ProjectService.class);
 			LokiConnectorService connectorService = context.getBean(LokiConnectorService.class);
 			LlmAccountService llmAccountService = context.getBean(LlmAccountService.class);
@@ -155,14 +157,14 @@ class SqlitePersistenceTest {
 		assertThat(contains(dbBytes, "ingest-token")).isFalse();
 	}
 
-	private ConfigurableApplicationContext startContext(Path dbPath) {
+	private ConfigurableApplicationContext startContext(Path dbPath, String encryptionSecret) {
 		return new SpringApplicationBuilder(LogcopilotApplication.class)
 			.run(
 				"--server.port=0",
 				"--spring.task.scheduling.enabled=false",
 				"--logcopilot.persistence.enabled=true",
-				"--logcopilot.persistence.sqlite.path=" + dbPath.toAbsolutePath(),
-				"--logcopilot.persistence.encryption-key=t21-test-encryption-key",
+				"--logcopilot.persistence.sqlite-path=" + dbPath.toAbsolutePath(),
+				"--logcopilot.persistence.encryption-key=" + encryptionSecret,
 				"--logcopilot.llm.oauth.mode=" + LlmOAuthProperties.Mode.STUB.name().toLowerCase()
 			);
 	}

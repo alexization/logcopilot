@@ -10,6 +10,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.sqlite.SQLiteDataSource;
 
 import javax.sql.DataSource;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -80,10 +82,42 @@ public class SqlitePersistenceConfiguration {
 		if (trimmed.startsWith("jdbc:sqlite:")) {
 			trimmed = trimmed.substring("jdbc:sqlite:".length());
 		}
-		if (trimmed.startsWith(":memory:")) {
+		if (trimmed.startsWith(":memory:") || trimmed.startsWith(":resource:")) {
 			return;
 		}
-		createParentDirectory(trimmed);
+		String filesystemPath = toFilesystemPathForDirectoryPreparation(trimmed);
+		if (filesystemPath == null || filesystemPath.isBlank()) {
+			return;
+		}
+		createParentDirectory(filesystemPath);
+	}
+
+	private String toFilesystemPathForDirectoryPreparation(String rawPath) {
+		int querySeparatorIndex = rawPath.indexOf('?');
+		String withoutQuery = querySeparatorIndex >= 0
+			? rawPath.substring(0, querySeparatorIndex)
+			: rawPath;
+		if (!withoutQuery.startsWith("file:")) {
+			return withoutQuery;
+		}
+		try {
+			URI uri = new URI(withoutQuery);
+			String path = uri.getPath();
+			if (path != null && !path.isBlank()) {
+				return path;
+			}
+			String schemeSpecificPart = uri.getSchemeSpecificPart();
+			if (schemeSpecificPart == null || schemeSpecificPart.isBlank()) {
+				return null;
+			}
+			if (schemeSpecificPart.startsWith("//")) {
+				URI normalized = new URI("file:" + schemeSpecificPart);
+				return normalized.getPath();
+			}
+			return schemeSpecificPart;
+		} catch (URISyntaxException exception) {
+			return null;
+		}
 	}
 
 	private void createParentDirectory(String sqlitePath) {

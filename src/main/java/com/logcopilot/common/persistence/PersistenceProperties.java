@@ -1,5 +1,6 @@
 package com.logcopilot.common.persistence;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "logcopilot.persistence")
@@ -7,7 +8,19 @@ public class PersistenceProperties {
 
 	private boolean enabled = true;
 	private String sqlitePath = "./data/logcopilot.sqlite";
-	private String encryptionKey = "logcopilot-dev-only-change-me";
+	private String encryptionKey;
+
+	@PostConstruct
+	void validate() {
+		if (!enabled) {
+			return;
+		}
+		if (encryptionKey == null || encryptionKey.isBlank()) {
+			throw new IllegalStateException(
+				"logcopilot.persistence.encryption-key must be configured when persistence is enabled"
+			);
+		}
+	}
 
 	public boolean isEnabled() {
 		return enabled;

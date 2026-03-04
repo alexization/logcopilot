@@ -45,18 +45,16 @@ public class SqliteLokiPullCursorStore implements LokiPullCursorStore {
 			return;
 		}
 		long normalizedCursor = Math.max(0L, nextCursor);
-		long current = readCursor(projectId);
-		long committed = Math.max(current, normalizedCursor);
 		jdbcTemplate.update(
 			"""
 				insert into loki_pull_cursors(project_id, cursor_value, updated_at)
 				values (?, ?, ?)
 				on conflict(project_id) do update set
-					cursor_value = excluded.cursor_value,
+					cursor_value = max(loki_pull_cursors.cursor_value, excluded.cursor_value),
 					updated_at = excluded.updated_at
 				""",
 			projectId,
-			committed,
+			normalizedCursor,
 			Instant.now().toString()
 		);
 	}
