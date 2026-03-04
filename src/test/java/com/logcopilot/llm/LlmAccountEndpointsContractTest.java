@@ -218,6 +218,32 @@ class LlmAccountEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("GET /v1/projects/{project_id}/llm-oauth/{provider}/callback 은 provider 오류를 400으로 매핑한다")
+	void callbackLlmOAuthReturns400WhenProviderReturnsError() throws Exception {
+		String projectId = createProjectId("llm-oauth-callback-provider-error");
+		MvcResult started = mockMvc.perform(post("/v1/projects/{project_id}/llm-oauth/{provider}/start", projectId, "gemini")
+				.header("Authorization", "Bearer llm-token"))
+			.andExpect(status().isOk())
+			.andReturn();
+		String state = jsonValue(started, "/data/state");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/llm-oauth/{provider}/callback", projectId, "gemini")
+				.queryParam("state", state)
+				.queryParam("error", "access_denied")
+				.queryParam("error_description", "user denied"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("OAuth provider returned error: access_denied (user denied)"));
+
+		mockMvc.perform(get("/v1/projects/{project_id}/llm-oauth/{provider}/callback", projectId, "gemini")
+				.queryParam("state", state)
+				.queryParam("code", "oauth-code-2"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.error.code").value("conflict"))
+			.andExpect(jsonPath("$.error.message").value("Invalid or expired oauth state"));
+	}
+
+	@Test
 	@DisplayName("GET /v1/projects/{project_id}/llm-accounts 는 계정 목록을 반환한다")
 	void listLlmAccountsReturnsAccountList() throws Exception {
 		String projectId = createProjectId("llm-list");

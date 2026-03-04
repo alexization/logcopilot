@@ -235,12 +235,25 @@ paths:
         - $ref: '#/components/parameters/OAuthProvider'
         - name: code
           in: query
-          required: true
+          required: false
+          description: Authorization code (required when `error` is absent)
           schema:
             type: string
         - name: state
           in: query
           required: true
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          description: Provider callback error code
+          schema:
+            type: string
+        - name: error_description
+          in: query
+          required: false
+          description: Provider callback error detail
           schema:
             type: string
       responses:
