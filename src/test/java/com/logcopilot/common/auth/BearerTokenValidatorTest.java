@@ -1,8 +1,12 @@
 package com.logcopilot.common.auth;
 
 import com.logcopilot.common.error.UnauthorizedException;
+import com.logcopilot.common.persistence.TokenHashStore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,6 +69,50 @@ class BearerTokenValidatorTest {
 	@DisplayName("BearerTokenValidator는 등록되지 않은 토큰이면 예외를 던진다")
 	void throwsWhenTokenIsNotRegistered() {
 		assertThatThrownBy(() -> validator.validate("Bearer unknown-token"))
+			.isInstanceOf(UnauthorizedException.class)
+			.hasMessage("Missing or invalid bearer token");
+	}
+
+	@Test
+	@DisplayName("BearerTokenValidator는 hash 저장소 기반 토큰 검증을 지원한다")
+	void validatesUsingHashBackedTokenStore() {
+		TokenHashStore tokenHashStore = new TokenHashStore() {
+			@Override
+			public void ensureDefaults(Map<String, String> tokenTypeByPlainToken) {
+			}
+
+			@Override
+			public Optional<String> findTokenType(String plainToken) {
+				if ("ingest-token".equals(plainToken)) {
+					return Optional.of("INGEST");
+				}
+				return Optional.empty();
+			}
+		};
+		BearerTokenValidator hashBackedValidator = new BearerTokenValidator(tokenHashStore);
+
+		BearerTokenValidator.ValidatedToken token = hashBackedValidator.validate("Bearer ingest-token");
+
+		assertThat(token.value()).isEqualTo("ingest-token");
+		assertThat(token.type()).isEqualTo(BearerTokenValidator.TokenType.INGEST);
+	}
+
+	@Test
+	@DisplayName("BearerTokenValidator는 hash 저장소 오류가 나면 UnauthorizedException을 던진다")
+	void throwsUnauthorizedWhenHashStoreFails() {
+		TokenHashStore tokenHashStore = new TokenHashStore() {
+			@Override
+			public void ensureDefaults(Map<String, String> tokenTypeByPlainToken) {
+			}
+
+			@Override
+			public Optional<String> findTokenType(String plainToken) {
+				throw new IllegalStateException("db unavailable");
+			}
+		};
+		BearerTokenValidator hashBackedValidator = new BearerTokenValidator(tokenHashStore);
+
+		assertThatThrownBy(() -> hashBackedValidator.validate("Bearer ingest-token"))
 			.isInstanceOf(UnauthorizedException.class)
 			.hasMessage("Missing or invalid bearer token");
 	}

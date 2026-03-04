@@ -3,9 +3,12 @@ package com.logcopilot.connector;
 import com.logcopilot.common.error.BadGatewayException;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.common.error.ValidationException;
+import com.logcopilot.common.persistence.StateSnapshotRepository;
 import com.logcopilot.project.ProjectService;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -20,11 +23,28 @@ import java.util.UUID;
 @Service
 public class LokiConnectorService {
 
+	private static final String SNAPSHOT_SCOPE = "loki-connector-service";
+
 	private final ProjectService projectService;
+	private final StateSnapshotRepository stateSnapshotRepository;
 	private final Map<String, LokiConnector> connectorByProjectId = new HashMap<>();
 
 	public LokiConnectorService(ProjectService projectService) {
+		this(projectService, (StateSnapshotRepository) null);
+	}
+
+	@Autowired
+	public LokiConnectorService(
+		ProjectService projectService,
+		ObjectProvider<StateSnapshotRepository> stateSnapshotRepositoryProvider
+	) {
+		this(projectService, stateSnapshotRepositoryProvider.getIfAvailable());
+	}
+
+	LokiConnectorService(ProjectService projectService, StateSnapshotRepository stateSnapshotRepository) {
 		this.projectService = projectService;
+		this.stateSnapshotRepository = stateSnapshotRepository;
+		restoreState();
 	}
 
 	public synchronized UpsertResult upsert(String projectId, LokiConnectorRequest request) {
@@ -46,7 +66,7 @@ public class LokiConnectorService {
 				pollIntervalSeconds,
 				Instant.now()
 			);
-			connectorByProjectId.put(projectId, created);
+			persistUpsertedConnector(projectId, created, null);
 			return new UpsertResult(true, created);
 		}
 
@@ -59,7 +79,7 @@ public class LokiConnectorService {
 			pollIntervalSeconds,
 			Instant.now()
 		);
-		connectorByProjectId.put(projectId, updated);
+		persistUpsertedConnector(projectId, updated, existing);
 		return new UpsertResult(false, updated);
 	}
 
@@ -205,5 +225,45 @@ public class LokiConnectorService {
 		int latencyMs,
 		String message
 	) {
+	}
+
+	private void restoreState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		stateSnapshotRepository.load(SNAPSHOT_SCOPE, LokiConnectorSnapshot.class)
+			.ifPresent(snapshot -> {
+				connectorByProjectId.clear();
+				if (snapshot.connectorByProjectId() != null) {
+					connectorByProjectId.putAll(snapshot.connectorByProjectId());
+				}
+			});
+	}
+
+	private void persistState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		stateSnapshotRepository.save(
+			SNAPSHOT_SCOPE,
+			new LokiConnectorSnapshot(new HashMap<>(connectorByProjectId))
+		);
+	}
+
+	private void persistUpsertedConnector(String projectId, LokiConnector current, LokiConnector previous) {
+		connectorByProjectId.put(projectId, current);
+		try {
+			persistState();
+		} catch (RuntimeException exception) {
+			if (previous == null) {
+				connectorByProjectId.remove(projectId);
+			} else {
+				connectorByProjectId.put(projectId, previous);
+			}
+			throw exception;
+		}
+	}
+
+	record LokiConnectorSnapshot(Map<String, LokiConnector> connectorByProjectId) {
 	}
 }

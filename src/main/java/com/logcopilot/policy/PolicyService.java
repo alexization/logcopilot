@@ -1,8 +1,11 @@
 package com.logcopilot.policy;
 
 import com.logcopilot.common.error.BadRequestException;
+import com.logcopilot.common.persistence.StateSnapshotRepository;
 import com.logcopilot.common.security.SensitiveDataSanitizer;
 import com.logcopilot.project.ProjectService;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -17,6 +20,7 @@ import java.util.regex.PatternSyntaxException;
 @Service
 public class PolicyService {
 
+	private static final String SNAPSHOT_SCOPE = "policy-service";
 	private static final int MAX_REDACTION_RULES = 200;
 	private static final int MAX_REGEX_PATTERN_LENGTH = 512;
 	private static final Pattern NESTED_QUANTIFIER_PATTERN =
@@ -25,11 +29,26 @@ public class PolicyService {
 		);
 
 	private final ProjectService projectService;
+	private final StateSnapshotRepository stateSnapshotRepository;
 	private final Map<String, ExportPolicyState> exportPolicyByProject = new HashMap<>();
 	private final Map<String, RedactionPolicyState> redactionPolicyByProject = new HashMap<>();
 
 	public PolicyService(ProjectService projectService) {
+		this(projectService, (StateSnapshotRepository) null);
+	}
+
+	@Autowired
+	public PolicyService(
+		ProjectService projectService,
+		ObjectProvider<StateSnapshotRepository> stateSnapshotRepositoryProvider
+	) {
+		this(projectService, stateSnapshotRepositoryProvider.getIfAvailable());
+	}
+
+	PolicyService(ProjectService projectService, StateSnapshotRepository stateSnapshotRepository) {
 		this.projectService = projectService;
+		this.stateSnapshotRepository = stateSnapshotRepository;
+		restoreState();
 	}
 
 	public synchronized ExportPolicyResult updateExportPolicy(String projectId, ExportPolicyCommand command) {
@@ -41,6 +60,7 @@ public class PolicyService {
 		String level = validateExportLevel(command.level());
 		ExportPolicyState updated = new ExportPolicyState(level, Instant.now());
 		exportPolicyByProject.put(projectId, updated);
+		persistState();
 		return new ExportPolicyResult(updated.level(), updated.updatedAt());
 	}
 
@@ -57,6 +77,7 @@ public class PolicyService {
 		List<RedactionRuleState> normalizedRules = normalizeAndValidateRules(command.rules());
 		RedactionPolicyState updated = new RedactionPolicyState(enabled, normalizedRules, Instant.now());
 		redactionPolicyByProject.put(projectId, updated);
+		persistState();
 		return new RedactionPolicyResult(updated.enabled(), updated.rules().size(), updated.updatedAt());
 	}
 
@@ -213,23 +234,59 @@ public class PolicyService {
 	) {
 	}
 
-	private record ExportPolicyState(
+	record ExportPolicyState(
 		String level,
 		Instant updatedAt
 	) {
 	}
 
-	private record RedactionPolicyState(
+	record RedactionPolicyState(
 		boolean enabled,
 		List<RedactionRuleState> rules,
 		Instant updatedAt
 	) {
 	}
 
-	private record RedactionRuleState(
+	record RedactionRuleState(
 		String name,
 		String pattern,
 		String replaceWith
+	) {
+	}
+
+	private void restoreState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		stateSnapshotRepository.load(SNAPSHOT_SCOPE, PolicySnapshot.class)
+			.ifPresent(snapshot -> {
+				exportPolicyByProject.clear();
+				redactionPolicyByProject.clear();
+				if (snapshot.exportPolicyByProject() != null) {
+					exportPolicyByProject.putAll(snapshot.exportPolicyByProject());
+				}
+				if (snapshot.redactionPolicyByProject() != null) {
+					redactionPolicyByProject.putAll(snapshot.redactionPolicyByProject());
+				}
+			});
+	}
+
+	private void persistState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		stateSnapshotRepository.save(
+			SNAPSHOT_SCOPE,
+			new PolicySnapshot(
+				new HashMap<>(exportPolicyByProject),
+				new HashMap<>(redactionPolicyByProject)
+			)
+		);
+	}
+
+	record PolicySnapshot(
+		Map<String, ExportPolicyState> exportPolicyByProject,
+		Map<String, RedactionPolicyState> redactionPolicyByProject
 	) {
 	}
 }

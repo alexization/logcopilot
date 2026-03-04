@@ -2,7 +2,9 @@ package com.logcopilot.alert;
 
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.common.error.ValidationException;
+import com.logcopilot.common.persistence.StateSnapshotRepository;
 import com.logcopilot.project.ProjectService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,7 @@ import java.util.regex.Pattern;
 @Service
 public class AlertService {
 
+	private static final String SNAPSHOT_SCOPE = "alert-service";
 	private static final int DEFAULT_LIMIT = 50;
 	private static final int MAX_LIMIT = 200;
 	private static final double DEFAULT_MIN_CONFIDENCE = 0.45d;
@@ -52,6 +55,7 @@ public class AlertService {
 	private final Duration stormScopeRetention;
 	private final AlertStormPolicy alertStormPolicy;
 	private final Clock clock;
+	private final StateSnapshotRepository stateSnapshotRepository;
 	private final Map<String, Map<String, AlertChannelState>> channelsByProject = new HashMap<>();
 	private final Map<String, List<AuditLogState>> auditLogsByProject = new HashMap<>();
 	private final Map<String, Instant> lastDispatchAtByProject = new HashMap<>();
@@ -89,7 +93,8 @@ public class AlertService {
 		@Value("${logcopilot.alert.storm.quiet-hours.end:07:00}") String quietHoursEnd,
 		@Value("${logcopilot.alert.storm.quiet-hours.zone:UTC}") String quietHoursZone,
 		@Value("${logcopilot.alert.storm.max-scopes:10000}") int maxStormScopeEntries,
-		@Value("${logcopilot.alert.storm.scope-retention:PT24H}") Duration stormScopeRetention
+		@Value("${logcopilot.alert.storm.scope-retention:PT24H}") Duration stormScopeRetention,
+		ObjectProvider<StateSnapshotRepository> stateSnapshotRepositoryProvider
 	) {
 		this(
 			projectService,
@@ -105,7 +110,8 @@ public class AlertService {
 			),
 			Clock.systemUTC(),
 			maxStormScopeEntries,
-			stormScopeRetention
+			stormScopeRetention,
+			stateSnapshotRepositoryProvider.getIfAvailable()
 		);
 	}
 
@@ -121,7 +127,8 @@ public class AlertService {
 			alertStormPolicy,
 			clock,
 			DEFAULT_MAX_STORM_SCOPE_ENTRIES,
-			DEFAULT_STORM_SCOPE_RETENTION
+			DEFAULT_STORM_SCOPE_RETENTION,
+			null
 		);
 	}
 
@@ -131,7 +138,8 @@ public class AlertService {
 		AlertStormPolicy alertStormPolicy,
 		Clock clock,
 		int maxStormScopeEntries,
-		Duration stormScopeRetention
+		Duration stormScopeRetention,
+		StateSnapshotRepository stateSnapshotRepository
 	) {
 		if (maxAuditLogsPerProject < 1) {
 			throw new IllegalArgumentException("maxAuditLogsPerProject must be >= 1");
@@ -154,6 +162,8 @@ public class AlertService {
 		this.stormScopeRetention = stormScopeRetention;
 		this.alertStormPolicy = alertStormPolicy;
 		this.clock = clock;
+		this.stateSnapshotRepository = stateSnapshotRepository;
+		restoreState();
 	}
 
 	public synchronized ConfigureResult configureSlack(
@@ -189,7 +199,7 @@ public class AlertService {
 				"created", result.created()
 			)
 		);
-
+		persistState();
 		return result;
 	}
 
@@ -231,7 +241,7 @@ public class AlertService {
 				"created", result.created()
 			)
 		);
-
+		persistState();
 		return result;
 	}
 
@@ -244,18 +254,26 @@ public class AlertService {
 		Instant now = clock.instant();
 		evictStormScopeState(now);
 		String scopeKey = dispatchScopeKey(projectId, safeCommand.service());
-
+		AlertDispatchResult result;
 		if (!hasEnabledChannel(projectId)) {
-			return suppressDispatch(projectId, safeCommand, "no_channel_configured", now);
+			result = suppressDispatch(projectId, safeCommand, "no_channel_configured", now);
+			persistState();
+			return result;
 		}
 		if (isQuietHours(now)) {
-			return suppressDispatch(projectId, safeCommand, "quiet_hours", now);
+			result = suppressDispatch(projectId, safeCommand, "quiet_hours", now);
+			persistState();
+			return result;
 		}
 		if (isInCooldown(scopeKey, now)) {
-			return suppressDispatch(projectId, safeCommand, "cooldown", now);
+			result = suppressDispatch(projectId, safeCommand, "cooldown", now);
+			persistState();
+			return result;
 		}
 		if (isRateBudgetExceeded(scopeKey, now)) {
-			return suppressDispatch(projectId, safeCommand, "rate_budget_exceeded", now);
+			result = suppressDispatch(projectId, safeCommand, "rate_budget_exceeded", now);
+			persistState();
+			return result;
 		}
 
 		recordSuccessfulDispatch(scopeKey, now);
@@ -267,7 +285,9 @@ public class AlertService {
 			safeCommand.incidentId(),
 			dispatchMetadata(safeCommand, "dispatched")
 		);
-		return new AlertDispatchResult(true, "dispatched", now);
+		result = new AlertDispatchResult(true, "dispatched", now);
+		persistState();
+		return result;
 	}
 
 	public synchronized void recordDispatchFailure(
@@ -287,6 +307,7 @@ public class AlertService {
 			safeCommand.incidentId(),
 			dispatchMetadata(safeCommand, normalizeFailureReason(reason))
 		);
+		persistState();
 	}
 
 	public synchronized AuditLogListResult listAuditLogs(String projectId, AuditLogQuery query) {
@@ -540,8 +561,10 @@ public class AlertService {
 			clock.instant(),
 			Map.copyOf(metadata)
 		));
-		while (logs.size() > maxAuditLogsPerProject) {
-			logs.remove(0);
+		if (stateSnapshotRepository == null) {
+			while (logs.size() > maxAuditLogsPerProject) {
+				logs.remove(0);
+			}
 		}
 	}
 
@@ -794,7 +817,7 @@ public class AlertService {
 	) {
 	}
 
-	private record AlertChannelState(
+	record AlertChannelState(
 		String id,
 		String type,
 		boolean enabled,
@@ -803,14 +826,14 @@ public class AlertService {
 	) {
 	}
 
-	private record SlackConfig(
+	record SlackConfig(
 		String webhookUrl,
 		String channel,
 		double minConfidence
 	) {
 	}
 
-	private record EmailConfig(
+	record EmailConfig(
 		String from,
 		List<String> recipients,
 		SmtpConfig smtp,
@@ -818,7 +841,7 @@ public class AlertService {
 	) {
 	}
 
-	private record SmtpConfig(
+	record SmtpConfig(
 		String host,
 		int port,
 		String username,
@@ -827,7 +850,7 @@ public class AlertService {
 	) {
 	}
 
-	private record AuditLogState(
+	record AuditLogState(
 		String id,
 		String actor,
 		String action,
@@ -838,9 +861,72 @@ public class AlertService {
 	) {
 	}
 
-	private record DispatchBudgetState(
+	record DispatchBudgetState(
 		Instant windowStart,
 		int sentCount
+	) {
+	}
+
+	private void restoreState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		stateSnapshotRepository.load(SNAPSHOT_SCOPE, AlertServiceSnapshot.class)
+			.ifPresent(snapshot -> {
+				channelsByProject.clear();
+				auditLogsByProject.clear();
+				lastDispatchAtByProject.clear();
+				dispatchBudgetByProject.clear();
+
+				if (snapshot.channelsByProject() != null) {
+					snapshot.channelsByProject().forEach((projectId, channels) -> channelsByProject.put(
+						projectId,
+						channels == null ? new LinkedHashMap<>() : new LinkedHashMap<>(channels)
+					));
+				}
+				if (snapshot.auditLogsByProject() != null) {
+					snapshot.auditLogsByProject().forEach((projectId, logs) -> auditLogsByProject.put(
+						projectId,
+						logs == null ? new ArrayList<>() : new ArrayList<>(logs)
+					));
+				}
+				if (snapshot.lastDispatchAtByProject() != null) {
+					lastDispatchAtByProject.putAll(snapshot.lastDispatchAtByProject());
+				}
+				if (snapshot.dispatchBudgetByProject() != null) {
+					dispatchBudgetByProject.putAll(snapshot.dispatchBudgetByProject());
+				}
+			});
+	}
+
+	private void persistState() {
+		if (stateSnapshotRepository == null) {
+			return;
+		}
+		Map<String, Map<String, AlertChannelState>> copiedChannels = new HashMap<>();
+		channelsByProject.forEach((projectId, channels) ->
+			copiedChannels.put(projectId, new LinkedHashMap<>(channels))
+		);
+		Map<String, List<AuditLogState>> copiedAuditLogs = new HashMap<>();
+		auditLogsByProject.forEach((projectId, logs) ->
+			copiedAuditLogs.put(projectId, new ArrayList<>(logs))
+		);
+		stateSnapshotRepository.save(
+			SNAPSHOT_SCOPE,
+			new AlertServiceSnapshot(
+				copiedChannels,
+				copiedAuditLogs,
+				new HashMap<>(lastDispatchAtByProject),
+				new HashMap<>(dispatchBudgetByProject)
+			)
+		);
+	}
+
+	record AlertServiceSnapshot(
+		Map<String, Map<String, AlertChannelState>> channelsByProject,
+		Map<String, List<AuditLogState>> auditLogsByProject,
+		Map<String, Instant> lastDispatchAtByProject,
+		Map<String, DispatchBudgetState> dispatchBudgetByProject
 	) {
 	}
 }
