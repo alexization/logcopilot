@@ -5,12 +5,15 @@ import com.logcopilot.common.error.ConflictException;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.project.ProjectService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,15 +24,23 @@ import java.util.UUID;
 @Service
 public class LlmAccountService {
 
-	private static final Duration OAUTH_STATE_TTL = Duration.ofMinutes(10);
 	private final ProjectService projectService;
+	private final LlmOAuthProperties oauthProperties;
+	private final Clock clock;
 	private final Map<String, LinkedHashMap<String, AccountState>> accountsByProject = new HashMap<>();
 	private final Map<String, Map<String, String>> apiKeyAccountIdByProjectProvider = new HashMap<>();
 	private final Map<String, Map<String, String>> oauthAccountIdByProjectProvider = new HashMap<>();
 	private final Map<String, OAuthState> oauthStateByValue = new HashMap<>();
 
-	public LlmAccountService(ProjectService projectService) {
+	@Autowired
+	public LlmAccountService(ProjectService projectService, LlmOAuthProperties oauthProperties) {
+		this(projectService, oauthProperties, Clock.systemUTC());
+	}
+
+	LlmAccountService(ProjectService projectService, LlmOAuthProperties oauthProperties, Clock clock) {
 		this.projectService = projectService;
+		this.oauthProperties = oauthProperties;
+		this.clock = clock;
 	}
 
 	public synchronized UpsertResult upsertApiKey(String projectId, ApiKeyUpsertCommand command) {
@@ -63,7 +74,7 @@ public class LlmAccountService {
 				label,
 				model,
 				"active",
-				Instant.now(),
+				Instant.now(clock),
 				baseUrl,
 				command.apiKey()
 			);
@@ -98,9 +109,9 @@ public class LlmAccountService {
 		purgeExpiredOAuthStates();
 
 		String state = UUID.randomUUID().toString();
-		oauthStateByValue.put(state, new OAuthState(projectId, provider, Instant.now()));
-		String authUrl = "https://auth.%s.example.com/oauth/authorize?project_id=%s&state=%s"
-			.formatted(provider, projectId, state);
+		String authUrl = buildAuthorizationUrl(projectId, provider, state);
+		enforceOAuthStateCapacity();
+		oauthStateByValue.put(state, new OAuthState(projectId, provider, Instant.now(clock)));
 		return new OAuthStartResult(authUrl, state);
 	}
 
@@ -108,14 +119,15 @@ public class LlmAccountService {
 		String projectId,
 		String providerInput,
 		String code,
-		String state
+		String state,
+		String providerError,
+		String providerErrorDescription
 	) {
 		requireProjectForScopedRequest(projectId);
 		String provider = validateProviderForBadRequest(providerInput);
-		validateCode(code);
 		validateState(state);
 		purgeExpiredOAuthStates();
-		Instant now = Instant.now();
+		Instant now = Instant.now(clock);
 
 		OAuthState started = oauthStateByValue.get(state);
 		if (started == null) {
@@ -126,9 +138,14 @@ public class LlmAccountService {
 			throw new ConflictException("Invalid or expired oauth state");
 		}
 		if (!started.projectId().equals(projectId) || !started.provider().equals(provider)) {
+			oauthStateByValue.remove(state);
 			throw new ConflictException("Invalid or expired oauth state");
 		}
 		oauthStateByValue.remove(state);
+		if (hasProviderError(providerError)) {
+			throw new BadRequestException(providerErrorMessage(providerError, providerErrorDescription));
+		}
+		validateCode(code);
 
 		LinkedHashMap<String, AccountState> accounts = accountsByProject.computeIfAbsent(
 			projectId,
@@ -152,7 +169,7 @@ public class LlmAccountService {
 			provider + "-oauth",
 			defaultModel(provider),
 			"active",
-			Instant.now(),
+			Instant.now(clock),
 			null,
 			null
 		);
@@ -289,12 +306,12 @@ public class LlmAccountService {
 	}
 
 	private void purgeExpiredOAuthStates() {
-		Instant now = Instant.now();
+		Instant now = Instant.now(clock);
 		oauthStateByValue.entrySet().removeIf(entry -> isExpired(entry.getValue(), now));
 	}
 
 	private boolean isExpired(OAuthState state, Instant now) {
-		return state.createdAt().isBefore(now.minus(OAUTH_STATE_TTL));
+		return !state.createdAt().plus(oauthProperties.getStateTtl()).isAfter(now);
 	}
 
 	private void validateCode(String code) {
@@ -311,6 +328,74 @@ public class LlmAccountService {
 
 	private String defaultModel(String provider) {
 		return "openai".equals(provider) ? "gpt-4o-mini" : "gemini-2.0-flash";
+	}
+
+	private String buildAuthorizationUrl(String projectId, String provider, String state) {
+		LlmOAuthProperties.ProviderSettings settings = oauthProperties.provider(provider);
+		String authorizationUri = oauthProperties.authorizationUriFor(provider);
+		if (settings == null
+			|| authorizationUri == null || authorizationUri.isBlank()
+			|| settings.getClientId() == null || settings.getClientId().isBlank()
+			|| settings.getScopes() == null || settings.getScopes().isEmpty()) {
+			throw new BadRequestException("OAuth provider is not configured");
+		}
+		List<String> scopes = settings.getScopes().stream()
+			.map(String::trim)
+			.filter(scope -> !scope.isEmpty())
+			.toList();
+		if (scopes.isEmpty()) {
+			throw new BadRequestException("OAuth provider is not configured");
+		}
+		String redirectUri = UriComponentsBuilder
+			.fromUriString(oauthProperties.getCallbackBaseUrl())
+			.path("/v1/projects/{project_id}/llm-oauth/{provider}/callback")
+			.buildAndExpand(projectId, provider)
+			.toUriString();
+		return UriComponentsBuilder
+			.fromUriString(authorizationUri)
+			.queryParam("response_type", "code")
+			.queryParam("client_id", settings.getClientId())
+			.queryParam("scope", String.join(" ", scopes))
+			.queryParam("redirect_uri", redirectUri)
+			.queryParam("state", state)
+			.build()
+			.encode()
+			.toUriString();
+	}
+
+	private boolean hasProviderError(String providerError) {
+		return providerError != null && !providerError.trim().isEmpty();
+	}
+
+	private String providerErrorMessage(String providerError, String providerErrorDescription) {
+		String normalizedError = providerError.trim().toLowerCase(Locale.ROOT);
+		String baseMessage = "OAuth provider returned error: " + normalizedError;
+		if (providerErrorDescription == null || providerErrorDescription.trim().isEmpty()) {
+			return baseMessage;
+		}
+		return baseMessage + " (" + truncate(providerErrorDescription.trim(), 80) + ")";
+	}
+
+	private String truncate(String value, int maxLength) {
+		if (value.length() <= maxLength) {
+			return value;
+		}
+		return value.substring(0, maxLength);
+	}
+
+	private void enforceOAuthStateCapacity() {
+		int maxEntries = oauthProperties.getMaxStateEntries();
+		int overflowCount = oauthStateByValue.size() - maxEntries + 1;
+		if (overflowCount <= 0) {
+			return;
+		}
+
+		List<String> oldestStates = oauthStateByValue.entrySet().stream()
+			.sorted(Comparator.comparing(entry -> entry.getValue().createdAt()))
+			.limit(overflowCount)
+			.map(Map.Entry::getKey)
+			.toList();
+		oldestStates.forEach(oauthStateByValue::remove);
 	}
 
 	private LlmAccount toLlmAccount(AccountState state) {

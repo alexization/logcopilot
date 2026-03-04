@@ -64,13 +64,17 @@ public class LlmAccountController {
 		@PathVariable("project_id") String projectId,
 		@PathVariable("provider") String provider,
 		@RequestParam(value = "code", required = false) String code,
-		@RequestParam(value = "state", required = false) String state
+		@RequestParam(value = "state", required = false) String state,
+		@RequestParam(value = "error", required = false) String error,
+		@RequestParam(value = "error_description", required = false) String errorDescription
 	) {
 		LlmAccountService.OAuthCallbackResult result = llmAccountService.callbackOAuth(
 			projectId,
 			provider,
 			code,
-			state
+			state,
+			error,
+			errorDescription
 		);
 		return new OAuthCallbackResponse(new OAuthCallbackData(result.linked(), result.accountId()));
 	}
