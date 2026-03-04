@@ -1,6 +1,7 @@
 package com.logcopilot.incident;
 
 import com.logcopilot.common.auth.BearerTokenValidator;
+import com.logcopilot.common.security.SecurityConfiguration;
 import com.logcopilot.incident.domain.AnalysisReport;
 import com.logcopilot.incident.domain.Hypothesis;
 import com.logcopilot.incident.domain.IncidentDetail;
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
@@ -27,6 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(IncidentController.class)
+@Import(SecurityConfiguration.class)
 class IncidentControllerTest {
 
 	@Autowired
