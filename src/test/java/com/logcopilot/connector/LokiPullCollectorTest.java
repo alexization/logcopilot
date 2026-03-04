@@ -171,6 +171,25 @@ class LokiPullCollectorTest {
 		verify(lokiPullCursorStore, times(1)).commit("project-1", 30L);
 	}
 
+	@Test
+	@DisplayName("LokiPullCollector는 이벤트가 없는 성공 pull에서도 next cursor를 commit한다")
+	void commitsCursorForEmptySuccessfulPullBatch() {
+		LokiConnectorService.LokiConnector connector = connector();
+		LokiPullClient.PullBatch pullBatch = new LokiPullClient.PullBatch(
+			"batch-empty",
+			25L,
+			List.of()
+		);
+		when(lokiConnectorService.findByProjectId("project-1")).thenReturn(Optional.of(connector));
+		when(lokiPullCursorStore.readCursor("project-1")).thenReturn(20L);
+		when(lokiPullClient.pull("project-1", connector, 20L)).thenReturn(pullBatch);
+
+		lokiPullCollector.collectProject("project-1");
+
+		verify(ingestService, never()).ingestPulledEvents(any());
+		verify(lokiPullCursorStore).commit("project-1", 25L);
+	}
+
 	private LokiConnectorService.LokiConnector connector() {
 		return new LokiConnectorService.LokiConnector(
 			"connector-1",

@@ -1,6 +1,7 @@
 package com.logcopilot.ingest;
 
 import com.logcopilot.common.error.NotImplementedException;
+import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.ingest.domain.EventDeduplicationPolicy;
 import com.logcopilot.ingest.domain.IngestAcceptedResult;
 import com.logcopilot.ingest.domain.IngestEventsCommand;
@@ -35,7 +36,7 @@ public class IngestService {
 	}
 
 	public IngestAcceptedResult ingestEvents(String idempotencyKey, IngestEventsCommand request) {
-		return idempotencyStore.computeIfAbsent(idempotencyKey, ignored -> ingestIntoCanonicalPipeline(request));
+		return idempotencyStore.computeIfAbsent(pushIdempotencyKey(idempotencyKey), ignored -> ingestIntoCanonicalPipeline(request));
 	}
 
 	public IngestAcceptedResult ingestPulledEvents(IngestEventsCommand request) {
@@ -63,8 +64,19 @@ public class IngestService {
 	}
 
 	private String pullIdempotencyKey(IngestEventsCommand request) {
-		String projectId = request == null || request.projectId() == null ? "unknown-project" : request.projectId().trim();
-		String batchId = request == null || request.batchId() == null ? "unknown-batch" : request.batchId().trim();
+		if (request == null || request.projectId() == null || request.projectId().trim().isEmpty()) {
+			throw new ValidationException("project_id is required for pulled ingest");
+		}
+		if (request.batchId() == null || request.batchId().trim().isEmpty()) {
+			throw new ValidationException("batch_id is required for pulled ingest");
+		}
+
+		String projectId = request.projectId().trim();
+		String batchId = request.batchId().trim();
 		return "pull:" + projectId + ":" + batchId;
+	}
+
+	private String pushIdempotencyKey(String idempotencyKey) {
+		return "push:" + idempotencyKey;
 	}
 }

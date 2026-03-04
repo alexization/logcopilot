@@ -26,4 +26,15 @@ class InMemoryLokiPullCursorStoreTest {
 
 		assertThat(store.readCursor("project-1")).isEqualTo(12L);
 	}
+
+	@Test
+	@DisplayName("InMemoryLokiPullCursorStore는 음수 cursor commit 입력을 0으로 정규화한다")
+	void normalizesNegativeCursorCommit() {
+		InMemoryLokiPullCursorStore store = new InMemoryLokiPullCursorStore();
+
+		store.commit("project-1", 7L);
+		store.commit("project-1", -1L);
+
+		assertThat(store.readCursor("project-1")).isEqualTo(7L);
+	}
 }

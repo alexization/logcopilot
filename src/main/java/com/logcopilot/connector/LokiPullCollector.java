@@ -60,7 +60,12 @@ public class LokiPullCollector {
 		long committedCursor = lokiPullCursorStore.readCursor(projectId);
 		try {
 			LokiPullClient.PullBatch pullBatch = lokiPullClient.pull(projectId, connector.get(), committedCursor);
-			if (pullBatch == null || pullBatch.events() == null || pullBatch.events().isEmpty()) {
+			if (pullBatch == null) {
+				return;
+			}
+
+			if (pullBatch.events() == null || pullBatch.events().isEmpty()) {
+				lokiPullCursorStore.commit(projectId, pullBatch.nextCursor());
 				lastPulledAtByProjectId.put(projectId, now);
 				return;
 			}
