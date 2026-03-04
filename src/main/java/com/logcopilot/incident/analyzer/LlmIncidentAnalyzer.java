@@ -4,6 +4,7 @@ import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.incident.domain.AnalysisReport;
 import com.logcopilot.incident.domain.Hypothesis;
 import com.logcopilot.llm.LlmAccountService;
+import com.logcopilot.policy.PolicyService;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -13,9 +14,11 @@ import java.util.List;
 public class LlmIncidentAnalyzer {
 
 	private final LlmAccountService llmAccountService;
+	private final PolicyService policyService;
 
-	public LlmIncidentAnalyzer(LlmAccountService llmAccountService) {
+	public LlmIncidentAnalyzer(LlmAccountService llmAccountService, PolicyService policyService) {
 		this.llmAccountService = llmAccountService;
+		this.policyService = policyService;
 	}
 
 	public boolean isAvailable(String projectId) {
@@ -45,25 +48,40 @@ public class LlmIncidentAnalyzer {
 			: hypotheses.get(0).confidence();
 		double llmConfidence = Math.min(0.95, baseConfidence + 0.18);
 
+		String redactedReason = redactForLlm(
+			command.projectId(),
+			ReanalyzeReasonNormalizer.normalize(command.reason())
+		);
+
 		List<String> evidence = new ArrayList<>();
-		evidence.add("LLM model: " + account.provider() + "/" + account.model());
-		evidence.add("Reanalysis reason: " + ReanalyzeReasonNormalizer.normalize(command.reason()));
+		evidence.add(redactForLlm(command.projectId(), "LLM model: " + account.provider() + "/" + account.model()));
+		evidence.add("Reanalysis reason: " + redactedReason);
 		if (!hypotheses.isEmpty() && hypotheses.get(0).evidence() != null) {
-			evidence.addAll(hypotheses.get(0).evidence());
+			hypotheses.get(0).evidence()
+				.stream()
+				.map(item -> redactForLlm(command.projectId(), item))
+				.forEach(evidence::add);
 		}
 
-		List<String> nextActions = new ArrayList<>(ruleNextActions);
-		nextActions.add("Use targeted prompts for stack trace correlation");
+		List<String> nextActions = new ArrayList<>();
+		ruleNextActions.stream()
+			.map(item -> redactForLlm(command.projectId(), item))
+			.forEach(nextActions::add);
+		nextActions.add(redactForLlm(command.projectId(), "Use targeted prompts for stack trace correlation"));
 
 		return new AnalysisReport(
 			"LLM-assisted reanalysis for incident " + command.incidentId(),
 			List.of(new Hypothesis(
-				"Likely cascading failure around service " + command.service(),
+				redactForLlm(command.projectId(), "Likely cascading failure around service " + command.service()),
 				llmConfidence,
 				evidence
 			)),
 			nextActions,
 			List.of("LLM analyzer executed with configured account")
 		);
+	}
+
+	private String redactForLlm(String projectId, String text) {
+		return policyService.redactForLlm(projectId, text);
 	}
 }

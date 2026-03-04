@@ -1,6 +1,7 @@
 package com.logcopilot.policy;
 
 import com.logcopilot.common.error.BadRequestException;
+import com.logcopilot.common.security.SensitiveDataSanitizer;
 import com.logcopilot.project.ProjectService;
 import org.springframework.stereotype.Service;
 
@@ -57,6 +58,39 @@ public class PolicyService {
 		RedactionPolicyState updated = new RedactionPolicyState(enabled, normalizedRules, Instant.now());
 		redactionPolicyByProject.put(projectId, updated);
 		return new RedactionPolicyResult(updated.enabled(), updated.rules().size(), updated.updatedAt());
+	}
+
+	public synchronized String redactForLlm(String projectId, String rawText) {
+		requireProject(projectId);
+		RedactionPolicyState policy = redactionPolicyByProject.get(projectId);
+		if (policy == null) {
+			throw new IllegalStateException("Redaction policy is not configured");
+		}
+		if (!policy.enabled()) {
+			throw new IllegalStateException("Redaction policy is disabled");
+		}
+		if (policy.rules().isEmpty()) {
+			throw new IllegalStateException("Redaction policy has no active rules");
+		}
+		if (rawText == null || rawText.isEmpty()) {
+			return rawText;
+		}
+
+		String redacted = rawText;
+		for (RedactionRuleState rule : policy.rules()) {
+			try {
+				redacted = redacted.replaceAll(rule.pattern(), rule.replaceWith());
+			} catch (RuntimeException exception) {
+				throw new IllegalStateException(
+					"Redaction rule execution failed: " + rule.name(),
+					exception
+				);
+			}
+		}
+		if (SensitiveDataSanitizer.containsUnmaskedSensitiveValue(redacted)) {
+			throw new IllegalStateException("Redaction did not mask all sensitive values");
+		}
+		return redacted;
 	}
 
 	private void requireProject(String projectId) {
