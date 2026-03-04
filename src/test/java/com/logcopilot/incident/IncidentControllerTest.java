@@ -1,18 +1,21 @@
 package com.logcopilot.incident;
 
 import com.logcopilot.common.auth.BearerTokenValidator;
+import com.logcopilot.common.security.SecurityConfiguration;
 import com.logcopilot.incident.domain.AnalysisReport;
 import com.logcopilot.incident.domain.Hypothesis;
 import com.logcopilot.incident.domain.IncidentDetail;
 import com.logcopilot.incident.domain.IncidentStatus;
 import com.logcopilot.incident.domain.ReanalyzeAcceptedResult;
 import com.logcopilot.project.ProjectService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
@@ -27,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(IncidentController.class)
+@Import(SecurityConfiguration.class)
 class IncidentControllerTest {
 
 	@Autowired
@@ -40,6 +44,11 @@ class IncidentControllerTest {
 
 	@MockBean
 	private BearerTokenValidator bearerTokenValidator;
+
+	@BeforeEach
+	void setUpAuthenticationStub() {
+		when(bearerTokenValidator.validate("Bearer token")).thenReturn("token");
+	}
 
 	@Test
 	@DisplayName("IncidentController는 incident의 project가 없으면 상세 조회에 404를 반환한다")
