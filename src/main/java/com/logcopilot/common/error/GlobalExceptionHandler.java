@@ -97,6 +97,11 @@ public class GlobalExceptionHandler {
 		return error(HttpStatus.NOT_IMPLEMENTED, "not_implemented", exception.getMessage());
 	}
 
+	@ExceptionHandler(TooManyRequestsException.class)
+	public ResponseEntity<ApiErrorResponse> handleTooManyRequests(TooManyRequestsException exception) {
+		return error(HttpStatus.TOO_MANY_REQUESTS, "too_many_requests", exception.getMessage());
+	}
+
 	private ResponseEntity<ApiErrorResponse> error(HttpStatus status, String code, String message) {
 		return ResponseEntity.status(status)
 			.body(ApiErrorResponse.of(code, message));
