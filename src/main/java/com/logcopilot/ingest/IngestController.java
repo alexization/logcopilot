@@ -5,11 +5,14 @@ import com.logcopilot.common.http.IdempotencyKeyValidator;
 import com.logcopilot.ingest.domain.CanonicalLogEvent;
 import com.logcopilot.ingest.domain.IngestAcceptedResult;
 import com.logcopilot.ingest.domain.IngestEventsCommand;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.Validator;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/v1/ingest")
@@ -27,21 +31,25 @@ public class IngestController {
 
 	private final IngestService ingestService;
 	private final IdempotencyKeyValidator idempotencyKeyValidator;
+	private final Validator validator;
 
 	public IngestController(
 		IngestService ingestService,
-		IdempotencyKeyValidator idempotencyKeyValidator
+		IdempotencyKeyValidator idempotencyKeyValidator,
+		Validator validator
 	) {
 		this.ingestService = ingestService;
 		this.idempotencyKeyValidator = idempotencyKeyValidator;
+		this.validator = validator;
 	}
 
 	@PostMapping("/events")
 	public ResponseEntity<IngestAcceptedResponse> ingestEvents(
 		@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-		@Valid @RequestBody IngestEventsRequest request
+		@RequestBody IngestEventsRequest request
 	) {
 		String validatedIdempotencyKey = idempotencyKeyValidator.validateRequired(idempotencyKey);
+		validateBeanConstraints(request);
 
 		IngestAcceptedResult accepted = ingestService.ingestEvents(
 			validatedIdempotencyKey,
@@ -109,6 +117,13 @@ public class IngestController {
 		);
 	}
 
+	private void validateBeanConstraints(IngestEventsRequest request) {
+		Set<ConstraintViolation<IngestEventsRequest>> violations = validator.validate(request);
+		if (!violations.isEmpty()) {
+			throw new ConstraintViolationException(violations);
+		}
+	}
+
 	public record IngestEventsRequest(
 		@NotBlank(message = "project_id is required")
 		@JsonProperty("project_id")
@@ -130,6 +145,10 @@ public class IngestController {
 		@JsonProperty("event_id")
 		String eventId,
 		@NotBlank(message = "timestamp must be RFC3339 date-time")
+		@Pattern(
+			regexp = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$",
+			message = "timestamp must be RFC3339 date-time"
+		)
 		String timestamp,
 		@NotBlank(message = "service must not be blank")
 		String service,

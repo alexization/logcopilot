@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -74,15 +75,13 @@ public class AlertController {
 			new AlertService.ConfigureEmailCommand(
 				request.from(),
 				request.recipients(),
-				request.smtp() == null
-					? null
-					: new AlertService.SmtpCommand(
-						request.smtp().host(),
-						request.smtp().port(),
-						request.smtp().username(),
-						request.smtp().password(),
-						request.smtp().starttls()
-					),
+				new AlertService.SmtpCommand(
+					request.smtp().host(),
+					request.smtp().port(),
+					request.smtp().username(),
+					request.smtp().password(),
+					request.smtp().starttls()
+				),
 				request.minConfidence()
 			)
 		);
@@ -128,6 +127,7 @@ public class AlertController {
 
 	public record SlackAlertRequest(
 		@NotBlank(message = "webhook_url must be a valid URI")
+		@Pattern(regexp = "https?://.+", message = "webhook_url must be a valid URI")
 		@JsonProperty("webhook_url")
 		String webhookUrl,
 		@NotBlank(message = "channel must not be blank")

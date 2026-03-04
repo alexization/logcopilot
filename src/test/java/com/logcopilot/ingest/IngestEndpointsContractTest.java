@@ -224,6 +224,28 @@ class IngestEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("POST /v1/ingest/events 는 Idempotency-Key 누락 시 본문 오류보다 우선해 400을 반환한다")
+	void ingestEventsPrioritizesMissingIdempotencyKeyBeforeBodyValidation() throws Exception {
+		String projectId = createProjectId("ingest-missing-idempotency-priority");
+		String body = """
+			{
+			  "project_id": "%s",
+			  "source": "loki",
+			  "batch_id": "batch-1",
+			  "events": [null]
+			}
+			""".formatted(projectId);
+
+		mockMvc.perform(post("/v1/ingest/events")
+				.header("Authorization", "Bearer ingest-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(body))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("Idempotency-Key header is required"));
+	}
+
+	@Test
 	@DisplayName("POST /v1/ingest/events 는 다중 검증 오류에서 details를 상한으로 제한한다")
 	void ingestEventsCapsValidationDetailsWhenErrorsAreLarge() throws Exception {
 		String projectId = createProjectId("ingest-validation-details-cap");
@@ -238,7 +260,7 @@ class IngestEndpointsContractTest {
 				.content(ingestEventsRequestBody(projectId, "loki", "batch-1", noisyEvents)))
 			.andExpect(status().isUnprocessableEntity())
 			.andExpect(jsonPath("$.error.code").value("validation_error"))
-			.andExpect(jsonPath("$.error.message").value("event_id must not be blank"))
+			.andExpect(jsonPath("$.error.message", containsString("must not be blank")))
 			.andExpect(jsonPath("$.error.details.length()").value(20))
 			.andExpect(jsonPath("$.error.details[19].field").value("_truncated"))
 			.andExpect(jsonPath("$.error.details[19].message", containsString("additional validation errors omitted")));

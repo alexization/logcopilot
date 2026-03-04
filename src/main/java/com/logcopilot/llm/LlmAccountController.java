@@ -105,7 +105,7 @@ public class LlmAccountController {
 	}
 
 	public record LlmApiKeyAccountRequest(
-		@NotBlank(message = "provider must be one of: openai, gemini")
+		@NotBlank(message = "provider must not be blank")
 		@Pattern(regexp = "(?i)openai|gemini", message = "provider must be one of: openai, gemini")
 		String provider,
 		@Size(max = 80, message = "label must be at most 80 characters")

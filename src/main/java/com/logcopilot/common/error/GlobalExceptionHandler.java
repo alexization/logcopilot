@@ -118,11 +118,14 @@ public class GlobalExceptionHandler {
 
 	private Map<String, Object> toConstraintDetail(ConstraintViolation<?> violation) {
 		String propertyPath = violation.getPropertyPath().toString();
-		int separatorIndex = propertyPath.lastIndexOf('.');
-		String field = separatorIndex < 0
-			? propertyPath
-			: propertyPath.substring(separatorIndex + 1);
-		return validationDetail(normalizeFieldPath(field), violation.getMessage());
+		int requestPathIndex = propertyPath.indexOf(".request");
+		if (requestPathIndex > 0) {
+			propertyPath = propertyPath.substring(requestPathIndex + 1);
+		}
+		return validationDetail(
+			normalizeFieldPath(propertyPath),
+			violation.getMessage()
+		);
 	}
 
 	private String firstValidationMessage(List<Map<String, Object>> details) {

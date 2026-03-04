@@ -4,6 +4,8 @@ import com.logcopilot.common.error.BadGatewayException;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.project.ProjectService;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -152,6 +154,8 @@ public class LokiConnectorService {
 	}
 
 	public record AuthRequest(
+		@NotBlank(message = "Auth type must be one of: none, bearer, basic")
+		@Pattern(regexp = "none|bearer|basic", message = "Auth type must be one of: none, bearer, basic")
 		String type,
 		String token,
 		String username,
