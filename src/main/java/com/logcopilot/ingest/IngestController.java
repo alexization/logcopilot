@@ -2,6 +2,7 @@ package com.logcopilot.ingest;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.logcopilot.common.http.IdempotencyKeyValidator;
+import com.logcopilot.common.error.TooManyRequestsException;
 import com.logcopilot.ingest.domain.CanonicalLogEvent;
 import com.logcopilot.ingest.domain.IngestAcceptedResult;
 import com.logcopilot.ingest.domain.IngestEventsCommand;
@@ -14,6 +15,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.Validator;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -32,22 +34,27 @@ public class IngestController {
 	private final IngestService ingestService;
 	private final IdempotencyKeyValidator idempotencyKeyValidator;
 	private final Validator validator;
+	private final IngestRateLimiter ingestRateLimiter;
 
 	public IngestController(
 		IngestService ingestService,
 		IdempotencyKeyValidator idempotencyKeyValidator,
-		Validator validator
+		Validator validator,
+		IngestRateLimiter ingestRateLimiter
 	) {
 		this.ingestService = ingestService;
 		this.idempotencyKeyValidator = idempotencyKeyValidator;
 		this.validator = validator;
+		this.ingestRateLimiter = ingestRateLimiter;
 	}
 
 	@PostMapping("/events")
 	public ResponseEntity<IngestAcceptedResponse> ingestEvents(
 		@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-		@RequestBody IngestEventsRequest request
+		@RequestBody IngestEventsRequest request,
+		Authentication authentication
 	) {
+		enforceIngestRateLimit(authentication, idempotencyKey);
 		String validatedIdempotencyKey = idempotencyKeyValidator.validateRequired(idempotencyKey);
 		validateBeanConstraints(request);
 
@@ -61,8 +68,10 @@ public class IngestController {
 	@PostMapping(value = "/otlp/logs", consumes = "application/x-protobuf")
 	public ResponseEntity<IngestAcceptedResponse> ingestOtlpLogs(
 		@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-		@RequestBody(required = false) byte[] payload
+		@RequestBody(required = false) byte[] payload,
+		Authentication authentication
 	) {
+		enforceIngestRateLimit(authentication, idempotencyKey);
 		String validatedIdempotencyKey = idempotencyKeyValidator.validateRequired(idempotencyKey);
 
 		IngestAcceptedResult accepted = ingestService.ingestOtlpLogs(validatedIdempotencyKey, payload);
@@ -121,6 +130,14 @@ public class IngestController {
 		Set<ConstraintViolation<IngestEventsRequest>> violations = validator.validate(request);
 		if (!violations.isEmpty()) {
 			throw new ConstraintViolationException(violations);
+		}
+	}
+
+	private void enforceIngestRateLimit(Authentication authentication, String idempotencyKey) {
+		String token = authentication == null ? null : authentication.getName();
+		IngestRateLimiter.AcquireResult acquireResult = ingestRateLimiter.tryAcquire(token, idempotencyKey);
+		if (!acquireResult.allowed()) {
+			throw new TooManyRequestsException("Ingest rate limit exceeded", acquireResult.retryAfterSeconds());
 		}
 	}
 

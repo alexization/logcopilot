@@ -3,6 +3,7 @@ package com.logcopilot.common.error;
 import com.logcopilot.common.api.ApiErrorResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -95,6 +96,15 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(NotImplementedException.class)
 	public ResponseEntity<ApiErrorResponse> handleNotImplemented(NotImplementedException exception) {
 		return error(HttpStatus.NOT_IMPLEMENTED, "not_implemented", exception.getMessage());
+	}
+
+	@ExceptionHandler(TooManyRequestsException.class)
+	public ResponseEntity<ApiErrorResponse> handleTooManyRequests(TooManyRequestsException exception) {
+		HttpHeaders headers = new HttpHeaders();
+		headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(exception.retryAfterSeconds()));
+		return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+			.headers(headers)
+			.body(ApiErrorResponse.of("too_many_requests", exception.getMessage()));
 	}
 
 	private ResponseEntity<ApiErrorResponse> error(HttpStatus status, String code, String message) {

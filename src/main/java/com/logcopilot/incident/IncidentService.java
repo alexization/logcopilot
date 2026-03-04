@@ -1,5 +1,6 @@
 package com.logcopilot.incident;
 
+import com.logcopilot.alert.AlertService;
 import com.logcopilot.common.error.ConflictException;
 import com.logcopilot.common.error.NotFoundException;
 import com.logcopilot.ingest.domain.CanonicalLogEvent;
@@ -12,6 +13,7 @@ import com.logcopilot.incident.domain.IncidentListResult;
 import com.logcopilot.incident.domain.IncidentStatus;
 import com.logcopilot.incident.domain.IncidentSummary;
 import com.logcopilot.incident.domain.ReanalyzeAcceptedResult;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,14 +36,22 @@ public class IncidentService {
 	private static final int MAX_LIMIT = 200;
 
 	private final IncidentAnalyzer incidentAnalyzer;
+	private final AlertService alertService;
 	private final Map<String, IncidentState> incidentsById = new LinkedHashMap<>();
 	private final Map<String, List<String>> incidentIdsByProject = new HashMap<>();
 
-	public IncidentService(IncidentAnalyzer incidentAnalyzer) {
+	@Autowired
+	public IncidentService(IncidentAnalyzer incidentAnalyzer, AlertService alertService) {
 		this.incidentAnalyzer = incidentAnalyzer;
+		this.alertService = alertService;
 	}
 
-	public synchronized void recordIngestedEvents(String projectId, List<CanonicalLogEvent> events) {
+	IncidentService(IncidentAnalyzer incidentAnalyzer) {
+		this.incidentAnalyzer = incidentAnalyzer;
+		this.alertService = null;
+	}
+
+	public void recordIngestedEvents(String projectId, List<CanonicalLogEvent> events) {
 		if (projectId == null || projectId.isBlank() || events == null || events.isEmpty()) {
 			return;
 		}
@@ -58,6 +68,7 @@ public class IncidentService {
 			eventsByService.computeIfAbsent(normalizedService, ignored -> new ArrayList<>()).add(event);
 		}
 
+		List<IncidentState> createdIncidents = new ArrayList<>();
 		for (Map.Entry<String, List<CanonicalLogEvent>> entry : eventsByService.entrySet()) {
 			String service = entry.getKey();
 			List<CanonicalLogEvent> serviceEvents = entry.getValue();
@@ -75,8 +86,36 @@ public class IncidentService {
 				timestampRange.lastSeen(),
 				report
 			);
-			incidentsById.put(state.id, state);
-			incidentIdsByProject.computeIfAbsent(projectId, ignored -> new ArrayList<>()).add(state.id);
+			createdIncidents.add(state);
+		}
+
+		synchronized (this) {
+			for (IncidentState state : createdIncidents) {
+				incidentsById.put(state.id, state);
+				incidentIdsByProject.computeIfAbsent(projectId, ignored -> new ArrayList<>()).add(state.id);
+			}
+		}
+
+		for (IncidentState state : createdIncidents) {
+			dispatchAlert(projectId, state);
+		}
+	}
+
+	private void dispatchAlert(String projectId, IncidentState state) {
+		if (alertService == null) {
+			return;
+		}
+		AlertService.DispatchIncidentAlertCommand command = new AlertService.DispatchIncidentAlertCommand(
+			state.id,
+			state.service,
+			state.severityScore,
+			"system:incident"
+		);
+		try {
+			alertService.dispatchIncidentAlert(projectId, command);
+		} catch (RuntimeException exception) {
+			logger.warn("Failed to dispatch incident alert: incidentId={}", state.id, exception);
+			alertService.recordDispatchFailure(projectId, command, exception.getMessage());
 		}
 	}
 
