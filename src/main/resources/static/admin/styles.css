@@ -21,7 +21,7 @@ body {
 	margin: 0;
 	padding: 0;
 	min-height: 100%;
-	font-family: "IBM Plex Sans", "Pretendard", "Noto Sans KR", sans-serif;
+	font-family: "IBM Plex Sans", Pretendard, "Noto Sans KR", sans-serif;
 	color: var(--text-main);
 	background: linear-gradient(130deg, var(--bg-1), var(--bg-2));
 }
@@ -149,10 +149,14 @@ body {
 	animation-delay: 280ms;
 }
 
-.nav-item:hover,
+.nav-item:hover {
+	border-color: rgba(13, 125, 84, 0.45);
+}
+
 .nav-item:focus-visible {
 	border-color: rgba(13, 125, 84, 0.45);
-	outline: none;
+	outline: 2px solid rgba(13, 125, 84, 0.52);
+	outline-offset: 2px;
 }
 
 .nav-item.active {
@@ -223,10 +227,14 @@ button {
 	cursor: pointer;
 }
 
-button:hover,
+button:hover {
+	filter: brightness(0.95);
+}
+
 button:focus-visible {
 	filter: brightness(0.95);
-	outline: none;
+	outline: 2px solid rgba(13, 125, 84, 0.52);
+	outline-offset: 2px;
 }
 
 button.secondary {

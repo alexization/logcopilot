@@ -18,12 +18,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.regex.Pattern;
 
 public class BearerAuthenticationFilter extends OncePerRequestFilter {
-
-	private static final Pattern OAUTH_CALLBACK_PATH = Pattern.compile("^/v1/projects/[^/]+/llm-oauth/[^/]+/callback$");
-	private static final Pattern ADMIN_UI_PATH = Pattern.compile("^/admin(?:/.*)?$");
 
 	private final BearerTokenValidator bearerTokenValidator;
 	private final AuthenticationEntryPoint authenticationEntryPoint;
@@ -38,12 +34,7 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
 
 	@Override
 	protected boolean shouldNotFilter(HttpServletRequest request) {
-		String path = request.getRequestURI();
-		boolean publicEndpoint = "/healthz".equals(path)
-			|| "/readyz".equals(path)
-			|| "/favicon.ico".equals(path)
-			|| ADMIN_UI_PATH.matcher(path).matches()
-			|| OAUTH_CALLBACK_PATH.matcher(path).matches();
+		boolean publicEndpoint = SecurityPublicPathPolicy.isPublicEndpoint(request);
 		return HttpMethod.OPTIONS.matches(request.getMethod()) || publicEndpoint;
 	}
 

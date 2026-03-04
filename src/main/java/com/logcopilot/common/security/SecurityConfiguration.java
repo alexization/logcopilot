@@ -66,10 +66,7 @@ public class SecurityConfiguration {
 				.accessDeniedHandler(accessDeniedHandler))
 			.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-				.requestMatchers("/healthz", "/readyz").permitAll()
-				.requestMatchers("/favicon.ico").permitAll()
-				.requestMatchers("/admin", "/admin/**").permitAll()
-				.requestMatchers("/v1/projects/*/llm-oauth/*/callback").permitAll()
+				.requestMatchers(SecurityPublicPathPolicy.PUBLIC_ENDPOINT_PATTERNS).permitAll()
 				.requestMatchers("/v1/ingest/**").hasRole("INGEST")
 				.anyRequest().hasRole("API"))
 			.addFilterBefore(bearerAuthenticationFilter, AnonymousAuthenticationFilter.class);
@@ -163,8 +160,8 @@ public class SecurityConfiguration {
 	}
 
 	private String unauthorizedMessage(HttpServletRequest request) {
-		String path = request.getRequestURI();
-		if (path != null && path.startsWith("/v1/ingest/")) {
+		String path = SecurityPublicPathPolicy.applicationPath(request);
+		if (path.startsWith("/v1/ingest/")) {
 			return "Missing or invalid ingest token";
 		}
 		return "Missing or invalid bearer token";

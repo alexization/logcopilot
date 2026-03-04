@@ -55,6 +55,10 @@
 		toast: document.getElementById("toast")
 	};
 
+	if (!validateRequiredElements()) {
+		return;
+	}
+
 	const apiClient = createApiClient(getStoredToken);
 
 	wireEvents();
@@ -92,6 +96,37 @@
 		});
 
 		elements.refreshButton.addEventListener("click", () => loadPreview());
+	}
+
+	function validateRequiredElements() {
+		const missing = [];
+		if (elements.navItems.length === 0) {
+			missing.push("navItems");
+		}
+
+		const requiredKeys = [
+			"tokenInput",
+			"connectButton",
+			"clearButton",
+			"refreshButton",
+			"sectionTitle",
+			"sectionDescription",
+			"authStatus",
+			"preview",
+			"toast"
+		];
+
+		requiredKeys.forEach((key) => {
+			if (!elements[key]) {
+				missing.push(key);
+			}
+		});
+
+		if (missing.length > 0) {
+			console.error("[AdminUI] Required element missing:", missing.join(", "));
+			return false;
+		}
+		return true;
 	}
 
 	function activateNav(nav) {
@@ -189,25 +224,26 @@
 			listProjects: () => request("/v1/projects")
 		};
 
-		async function request(path, options) {
-			const config = options || {};
-			const token = getToken();
-			const headers = {
-				"Accept": "application/json",
-				...config.headers
-			};
-			if (config.body !== undefined && config.body !== null) {
-				headers["Content-Type"] = "application/json";
-			}
-			if (token) {
-				headers.Authorization = "Bearer " + token;
-			}
+			async function request(path, options) {
+				const config = options || {};
+				const token = getToken();
+				const hasBody = config.body !== undefined && config.body !== null;
+				const headers = {
+					"Accept": "application/json",
+					...config.headers
+				};
+				if (hasBody) {
+					headers["Content-Type"] = "application/json";
+				}
+				if (token) {
+					headers.Authorization = "Bearer " + token;
+				}
 
-			const response = await fetch(path, {
-				method: config.method || "GET",
-				headers,
-				body: config.body ? JSON.stringify(config.body) : undefined
-			});
+				const response = await fetch(path, {
+					method: config.method || "GET",
+					headers,
+					body: hasBody ? JSON.stringify(config.body) : undefined
+				});
 
 			const text = await response.text();
 			const payload = parseJson(text);
