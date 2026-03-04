@@ -100,4 +100,11 @@ class SecurityEndpointsIntegrationTest {
 			.andExpect(jsonPath("$.error.code").value("unauthorized"))
 			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
 	}
+
+	@Test
+	@DisplayName("favicon 요청은 인증 경계를 통과하고 자원이 없으면 404를 반환한다")
+	void faviconRequestIsNotBlockedByAuthentication() throws Exception {
+		mockMvc.perform(get("/favicon.ico"))
+			.andExpect(status().isNotFound());
+	}
 }
