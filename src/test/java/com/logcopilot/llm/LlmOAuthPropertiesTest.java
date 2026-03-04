@@ -64,8 +64,9 @@ class LlmOAuthPropertiesTest {
 	@DisplayName("LlmOAuthProperties는 LIVE 모드에서 https와 비로컬 callback URL을 요구한다")
 	void rejectsLocalCallbackUrlWhenLiveModeEnabled() {
 		LlmOAuthProperties properties = LlmOAuthProperties.defaultProperties();
+		properties.setMode(LlmOAuthProperties.Mode.LIVE);
 
-		assertThatThrownBy(() -> properties.setMode(LlmOAuthProperties.Mode.LIVE))
+		assertThatThrownBy(properties::validateResolvedConfiguration)
 			.isInstanceOf(IllegalArgumentException.class)
 			.hasMessage("LIVE mode requires https callbackBaseUrl with non-local host");
 	}
@@ -79,5 +80,18 @@ class LlmOAuthPropertiesTest {
 		properties.setMode(LlmOAuthProperties.Mode.LIVE);
 
 		assertThat(properties.getMode()).isEqualTo(LlmOAuthProperties.Mode.LIVE);
+	}
+
+	@Test
+	@DisplayName("LlmOAuthProperties는 LIVE 모드 설정 후 callback URL을 설정해도 유효 조합을 허용한다")
+	void acceptsLiveModeWithSecureRemoteCallbackUrlWhenModeSetFirst() {
+		LlmOAuthProperties properties = LlmOAuthProperties.defaultProperties();
+		properties.setMode(LlmOAuthProperties.Mode.LIVE);
+
+		properties.setCallbackBaseUrl("https://logcopilot.example.com");
+		properties.validateResolvedConfiguration();
+
+		assertThat(properties.getMode()).isEqualTo(LlmOAuthProperties.Mode.LIVE);
+		assertThat(properties.getCallbackBaseUrl()).isEqualTo("https://logcopilot.example.com");
 	}
 }

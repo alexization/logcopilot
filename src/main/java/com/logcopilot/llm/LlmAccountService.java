@@ -333,7 +333,17 @@ public class LlmAccountService {
 	private String buildAuthorizationUrl(String projectId, String provider, String state) {
 		LlmOAuthProperties.ProviderSettings settings = oauthProperties.provider(provider);
 		String authorizationUri = oauthProperties.authorizationUriFor(provider);
-		if (settings == null || authorizationUri == null || authorizationUri.isBlank()) {
+		if (settings == null
+			|| authorizationUri == null || authorizationUri.isBlank()
+			|| settings.getClientId() == null || settings.getClientId().isBlank()
+			|| settings.getScopes() == null || settings.getScopes().isEmpty()) {
+			throw new BadRequestException("OAuth provider is not configured");
+		}
+		List<String> scopes = settings.getScopes().stream()
+			.map(String::trim)
+			.filter(scope -> !scope.isEmpty())
+			.toList();
+		if (scopes.isEmpty()) {
 			throw new BadRequestException("OAuth provider is not configured");
 		}
 		String redirectUri = UriComponentsBuilder
@@ -345,7 +355,7 @@ public class LlmAccountService {
 			.fromUriString(authorizationUri)
 			.queryParam("response_type", "code")
 			.queryParam("client_id", settings.getClientId())
-			.queryParam("scope", String.join(" ", settings.getScopes()))
+			.queryParam("scope", String.join(" ", scopes))
 			.queryParam("redirect_uri", redirectUri)
 			.queryParam("state", state)
 			.build()

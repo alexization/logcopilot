@@ -1,5 +1,6 @@
 package com.logcopilot.llm;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -72,7 +73,6 @@ public class LlmOAuthProperties {
 		if (mode == null) {
 			throw new IllegalArgumentException("mode must not be null");
 		}
-		validateLiveModeCallbackBaseUrl(mode, callbackBaseUrl);
 		this.mode = mode;
 	}
 
@@ -236,5 +236,11 @@ public class LlmOAuthProperties {
 			|| "::1".equals(host)
 			|| "0:0:0:0:0:0:0:1".equals(host)
 			|| host.startsWith("127.");
+	}
+
+	@PostConstruct
+	void validateResolvedConfiguration() {
+		validateCallbackBaseUrl(callbackBaseUrl);
+		validateLiveModeCallbackBaseUrl(mode, callbackBaseUrl);
 	}
 }

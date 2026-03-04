@@ -375,7 +375,8 @@ class LlmAccountServiceTest {
 						pair -> java.net.URLDecoder.decode(pair[0], java.nio.charset.StandardCharsets.UTF_8),
 						pair -> pair.length > 1
 							? java.net.URLDecoder.decode(pair[1], java.nio.charset.StandardCharsets.UTF_8)
-							: ""
+							: "",
+						(previous, current) -> current
 					));
 		}
 	}
