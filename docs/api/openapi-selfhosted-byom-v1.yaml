@@ -236,7 +236,7 @@ paths:
         - name: code
           in: query
           required: false
-          description: Authorization code (required when `error` is absent)
+          description: Authorization code (required when `error` is absent; ignored when `error` is present)
           schema:
             type: string
         - name: state
@@ -247,7 +247,7 @@ paths:
         - name: error
           in: query
           required: false
-          description: Provider callback error code
+          description: Provider callback error code (takes precedence over `code`)
           schema:
             type: string
         - name: error_description

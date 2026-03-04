@@ -188,15 +188,17 @@ class LlmAccountServiceTest {
 	@Test
 	@DisplayName("LlmAccountService는 state 저장소 상한 초과 시 가장 오래된 state를 제거한다")
 	void startOAuthEvictsOldestStateWhenCapacityExceeded() {
-		oauthProperties.setMaxStateEntries(2);
+		LlmOAuthProperties localProperties = LlmOAuthProperties.defaultProperties();
+		localProperties.setMaxStateEntries(2);
+		LlmAccountService localService = new LlmAccountService(projectService, localProperties, clock);
 		ProjectDto project = projectService.create("oauth-capacity-project", "prod");
-		LlmAccountService.OAuthStartResult first = llmAccountService.startOAuth(project.id(), "openai");
+		LlmAccountService.OAuthStartResult first = localService.startOAuth(project.id(), "openai");
 		clock.advance(Duration.ofSeconds(1));
-		LlmAccountService.OAuthStartResult second = llmAccountService.startOAuth(project.id(), "openai");
+		LlmAccountService.OAuthStartResult second = localService.startOAuth(project.id(), "openai");
 		clock.advance(Duration.ofSeconds(1));
-		LlmAccountService.OAuthStartResult third = llmAccountService.startOAuth(project.id(), "openai");
+		LlmAccountService.OAuthStartResult third = localService.startOAuth(project.id(), "openai");
 
-		assertThatThrownBy(() -> llmAccountService.callbackOAuth(
+		assertThatThrownBy(() -> localService.callbackOAuth(
 			project.id(),
 			"openai",
 			"oauth-code-1",
@@ -207,7 +209,7 @@ class LlmAccountServiceTest {
 			.isInstanceOf(ConflictException.class)
 			.hasMessage("Invalid or expired oauth state");
 
-		LlmAccountService.OAuthCallbackResult callback = llmAccountService.callbackOAuth(
+		LlmAccountService.OAuthCallbackResult callback = localService.callbackOAuth(
 			project.id(),
 			"openai",
 			"oauth-code-2",
@@ -219,6 +221,31 @@ class LlmAccountServiceTest {
 		assertThat(callback.linked()).isTrue();
 		assertThat(callback.accountId()).isNotBlank();
 		assertThat(second.state()).isNotEqualTo(third.state());
+	}
+
+	@Test
+	@DisplayName("LlmAccountService는 auth URL 생성 실패 시 OAuth state를 저장하지 않는다")
+	void startOAuthDoesNotPersistStateWhenAuthorizationUrlBuildFails() {
+		LlmOAuthProperties localProperties = LlmOAuthProperties.defaultProperties();
+		localProperties.setMaxStateEntries(1);
+		localProperties.getOpenai().setStubAuthorizationUri("");
+		LlmAccountService localService = new LlmAccountService(projectService, localProperties, clock);
+		ProjectDto project = projectService.create("oauth-start-failure-project", "prod");
+		LlmAccountService.OAuthStartResult validState = localService.startOAuth(project.id(), "gemini");
+
+		assertThatThrownBy(() -> localService.startOAuth(project.id(), "openai"))
+			.isInstanceOf(BadRequestException.class)
+			.hasMessage("OAuth provider is not configured");
+
+		LlmAccountService.OAuthCallbackResult callback = localService.callbackOAuth(
+			project.id(),
+			"gemini",
+			"oauth-code-1",
+			validState.state(),
+			null,
+			null
+		);
+		assertThat(callback.linked()).isTrue();
 	}
 
 	@Test

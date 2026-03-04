@@ -69,6 +69,10 @@ public class LlmOAuthProperties {
 	}
 
 	public void setMode(Mode mode) {
+		if (mode == null) {
+			throw new IllegalArgumentException("mode must not be null");
+		}
+		validateLiveModeCallbackBaseUrl(mode, callbackBaseUrl);
 		this.mode = mode;
 	}
 
@@ -93,6 +97,7 @@ public class LlmOAuthProperties {
 
 	public void setCallbackBaseUrl(String callbackBaseUrl) {
 		validateCallbackBaseUrl(callbackBaseUrl);
+		validateLiveModeCallbackBaseUrl(mode, callbackBaseUrl);
 		this.callbackBaseUrl = callbackBaseUrl;
 	}
 
@@ -101,6 +106,9 @@ public class LlmOAuthProperties {
 	}
 
 	public void setMaxStateEntries(int maxStateEntries) {
+		if (maxStateEntries <= 0) {
+			throw new IllegalArgumentException("maxStateEntries must be positive");
+		}
 		this.maxStateEntries = maxStateEntries;
 	}
 
@@ -206,5 +214,27 @@ public class LlmOAuthProperties {
 		} catch (URISyntaxException exception) {
 			throw new IllegalArgumentException("callbackBaseUrl must be a valid URI");
 		}
+	}
+
+	private void validateLiveModeCallbackBaseUrl(Mode mode, String callbackBaseUrl) {
+		if (mode != Mode.LIVE) {
+			return;
+		}
+
+		URI uri = URI.create(callbackBaseUrl);
+		String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+		String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+		if (!"https".equals(scheme) || isLoopbackHost(host)) {
+			throw new IllegalArgumentException("LIVE mode requires https callbackBaseUrl with non-local host");
+		}
+	}
+
+	private boolean isLoopbackHost(String host) {
+		return "localhost".equals(host)
+			|| "127.0.0.1".equals(host)
+			|| "0.0.0.0".equals(host)
+			|| "::1".equals(host)
+			|| "0:0:0:0:0:0:0:1".equals(host)
+			|| host.startsWith("127.");
 	}
 }

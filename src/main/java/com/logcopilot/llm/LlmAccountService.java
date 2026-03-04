@@ -74,7 +74,7 @@ public class LlmAccountService {
 				label,
 				model,
 				"active",
-				Instant.now(),
+				Instant.now(clock),
 				baseUrl,
 				command.apiKey()
 			);
@@ -107,11 +107,11 @@ public class LlmAccountService {
 		requireProjectForScopedRequest(projectId);
 		String provider = validateProviderForBadRequest(providerInput);
 		purgeExpiredOAuthStates();
-		enforceOAuthStateCapacity();
 
 		String state = UUID.randomUUID().toString();
-		oauthStateByValue.put(state, new OAuthState(projectId, provider, Instant.now(clock)));
 		String authUrl = buildAuthorizationUrl(projectId, provider, state);
+		enforceOAuthStateCapacity();
+		oauthStateByValue.put(state, new OAuthState(projectId, provider, Instant.now(clock)));
 		return new OAuthStartResult(authUrl, state);
 	}
 
@@ -375,19 +375,17 @@ public class LlmAccountService {
 
 	private void enforceOAuthStateCapacity() {
 		int maxEntries = oauthProperties.getMaxStateEntries();
-		if (maxEntries <= 0) {
+		int overflowCount = oauthStateByValue.size() - maxEntries + 1;
+		if (overflowCount <= 0) {
 			return;
 		}
-		while (oauthStateByValue.size() >= maxEntries) {
-			String oldestState = oauthStateByValue.entrySet().stream()
-				.min(Comparator.comparing(entry -> entry.getValue().createdAt()))
-				.map(Map.Entry::getKey)
-				.orElse(null);
-			if (oldestState == null) {
-				return;
-			}
-			oauthStateByValue.remove(oldestState);
-		}
+
+		List<String> oldestStates = oauthStateByValue.entrySet().stream()
+			.sorted(Comparator.comparing(entry -> entry.getValue().createdAt()))
+			.limit(overflowCount)
+			.map(Map.Entry::getKey)
+			.toList();
+		oldestStates.forEach(oauthStateByValue::remove);
 	}
 
 	private LlmAccount toLlmAccount(AccountState state) {

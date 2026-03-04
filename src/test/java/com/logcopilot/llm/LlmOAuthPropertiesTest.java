@@ -49,4 +49,35 @@ class LlmOAuthPropertiesTest {
 
 		assertThat(properties.getCallbackBaseUrl()).isEqualTo("https://logcopilot.example.com");
 	}
+
+	@Test
+	@DisplayName("LlmOAuthProperties는 0 이하 maxStateEntries를 허용하지 않는다")
+	void rejectsNonPositiveMaxStateEntries() {
+		LlmOAuthProperties properties = LlmOAuthProperties.defaultProperties();
+
+		assertThatThrownBy(() -> properties.setMaxStateEntries(0))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessage("maxStateEntries must be positive");
+	}
+
+	@Test
+	@DisplayName("LlmOAuthProperties는 LIVE 모드에서 https와 비로컬 callback URL을 요구한다")
+	void rejectsLocalCallbackUrlWhenLiveModeEnabled() {
+		LlmOAuthProperties properties = LlmOAuthProperties.defaultProperties();
+
+		assertThatThrownBy(() -> properties.setMode(LlmOAuthProperties.Mode.LIVE))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessage("LIVE mode requires https callbackBaseUrl with non-local host");
+	}
+
+	@Test
+	@DisplayName("LlmOAuthProperties는 LIVE 모드에서 유효한 callback URL을 허용한다")
+	void acceptsLiveModeWithSecureRemoteCallbackUrl() {
+		LlmOAuthProperties properties = LlmOAuthProperties.defaultProperties();
+		properties.setCallbackBaseUrl("https://logcopilot.example.com");
+
+		properties.setMode(LlmOAuthProperties.Mode.LIVE);
+
+		assertThat(properties.getMode()).isEqualTo(LlmOAuthProperties.Mode.LIVE);
+	}
 }
