@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -62,7 +63,8 @@ class IngestRateLimitIntegrationTest {
 				.content(ingestEventsRequestBody(projectId, "batch-3")))
 			.andExpect(status().isTooManyRequests())
 			.andExpect(jsonPath("$.error.code").value("too_many_requests"))
-			.andExpect(jsonPath("$.error.message").value("Ingest rate limit exceeded"));
+			.andExpect(jsonPath("$.error.message").value("Ingest rate limit exceeded"))
+			.andExpect(header().exists("Retry-After"));
 	}
 
 	@Test
@@ -97,7 +99,38 @@ class IngestRateLimitIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(ingestEventsRequestBody(projectId, "batch-3")))
 			.andExpect(status().isTooManyRequests())
-			.andExpect(jsonPath("$.error.code").value("too_many_requests"));
+			.andExpect(jsonPath("$.error.code").value("too_many_requests"))
+			.andExpect(header().exists("Retry-After"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/ingest/otlp/logs 는 토큰별 요청량 제한을 넘으면 429를 반환한다")
+	void ingestOtlpLogsReturns429WhenRateLimitExceeded() throws Exception {
+		createProjectId("ingest-rate-limit-otlp");
+
+		mockMvc.perform(post("/v1/ingest/otlp/logs")
+				.header("Authorization", "Bearer ingest-token")
+				.header("Idempotency-Key", "otlp-1")
+				.contentType("application/x-protobuf")
+				.content(new byte[] {0x0A, 0x01, 0x01}))
+			.andExpect(status().isNotImplemented());
+
+		mockMvc.perform(post("/v1/ingest/otlp/logs")
+				.header("Authorization", "Bearer ingest-token")
+				.header("Idempotency-Key", "otlp-2")
+				.contentType("application/x-protobuf")
+				.content(new byte[] {0x0A, 0x01, 0x02}))
+			.andExpect(status().isNotImplemented());
+
+		mockMvc.perform(post("/v1/ingest/otlp/logs")
+				.header("Authorization", "Bearer ingest-token")
+				.header("Idempotency-Key", "otlp-3")
+				.contentType("application/x-protobuf")
+				.content(new byte[] {0x0A, 0x01, 0x03}))
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.error.code").value("too_many_requests"))
+			.andExpect(jsonPath("$.error.message").value("Ingest rate limit exceeded"))
+			.andExpect(header().exists("Retry-After"));
 	}
 
 	private String createProjectId(String namePrefix) throws Exception {

@@ -42,10 +42,14 @@ public class AlertService {
 	private static final LocalTime DEFAULT_QUIET_HOURS_START = LocalTime.of(23, 0);
 	private static final LocalTime DEFAULT_QUIET_HOURS_END = LocalTime.of(7, 0);
 	private static final ZoneId DEFAULT_QUIET_HOURS_ZONE = ZoneId.of("UTC");
+	private static final int DEFAULT_MAX_STORM_SCOPE_ENTRIES = 10_000;
+	private static final Duration DEFAULT_STORM_SCOPE_RETENTION = Duration.ofHours(24);
 	private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
 	private final ProjectService projectService;
 	private final int maxAuditLogsPerProject;
+	private final int maxStormScopeEntries;
+	private final Duration stormScopeRetention;
 	private final AlertStormPolicy alertStormPolicy;
 	private final Clock clock;
 	private final Map<String, Map<String, AlertChannelState>> channelsByProject = new HashMap<>();
@@ -83,7 +87,9 @@ public class AlertService {
 		@Value("${logcopilot.alert.storm.quiet-hours.enabled:false}") boolean quietHoursEnabled,
 		@Value("${logcopilot.alert.storm.quiet-hours.start:23:00}") String quietHoursStart,
 		@Value("${logcopilot.alert.storm.quiet-hours.end:07:00}") String quietHoursEnd,
-		@Value("${logcopilot.alert.storm.quiet-hours.zone:UTC}") String quietHoursZone
+		@Value("${logcopilot.alert.storm.quiet-hours.zone:UTC}") String quietHoursZone,
+		@Value("${logcopilot.alert.storm.max-scopes:10000}") int maxStormScopeEntries,
+		@Value("${logcopilot.alert.storm.scope-retention:PT24H}") Duration stormScopeRetention
 	) {
 		this(
 			projectService,
@@ -97,7 +103,9 @@ public class AlertService {
 				LocalTime.parse(quietHoursEnd),
 				ZoneId.of(quietHoursZone)
 			),
-			Clock.systemUTC()
+			Clock.systemUTC(),
+			maxStormScopeEntries,
+			stormScopeRetention
 		);
 	}
 
@@ -106,6 +114,24 @@ public class AlertService {
 		int maxAuditLogsPerProject,
 		AlertStormPolicy alertStormPolicy,
 		Clock clock
+	) {
+		this(
+			projectService,
+			maxAuditLogsPerProject,
+			alertStormPolicy,
+			clock,
+			DEFAULT_MAX_STORM_SCOPE_ENTRIES,
+			DEFAULT_STORM_SCOPE_RETENTION
+		);
+	}
+
+	AlertService(
+		ProjectService projectService,
+		int maxAuditLogsPerProject,
+		AlertStormPolicy alertStormPolicy,
+		Clock clock,
+		int maxStormScopeEntries,
+		Duration stormScopeRetention
 	) {
 		if (maxAuditLogsPerProject < 1) {
 			throw new IllegalArgumentException("maxAuditLogsPerProject must be >= 1");
@@ -116,8 +142,16 @@ public class AlertService {
 		if (clock == null) {
 			throw new IllegalArgumentException("clock must not be null");
 		}
+		if (maxStormScopeEntries < 1) {
+			throw new IllegalArgumentException("maxStormScopeEntries must be >= 1");
+		}
+		if (stormScopeRetention == null || stormScopeRetention.isZero() || stormScopeRetention.isNegative()) {
+			throw new IllegalArgumentException("stormScopeRetention must be positive");
+		}
 		this.projectService = projectService;
 		this.maxAuditLogsPerProject = maxAuditLogsPerProject;
+		this.maxStormScopeEntries = maxStormScopeEntries;
+		this.stormScopeRetention = stormScopeRetention;
 		this.alertStormPolicy = alertStormPolicy;
 		this.clock = clock;
 	}
@@ -208,6 +242,7 @@ public class AlertService {
 		requireProjectForRead(projectId);
 		DispatchIncidentAlertCommand safeCommand = validateDispatchCommand(command);
 		Instant now = clock.instant();
+		evictStormScopeState(now);
 		String scopeKey = dispatchScopeKey(projectId, safeCommand.service());
 
 		if (!hasEnabledChannel(projectId)) {
@@ -381,6 +416,54 @@ public class AlertService {
 		return budget;
 	}
 
+	private void evictStormScopeState(Instant now) {
+		Instant expireBefore = now.minus(stormScopeRetention);
+		lastDispatchAtByProject.entrySet().removeIf(entry -> entry.getValue().isBefore(expireBefore));
+		dispatchBudgetByProject.entrySet().removeIf(entry -> entry.getValue().windowStart().isBefore(expireBefore));
+		trimScopeMap(lastDispatchAtByProject, maxStormScopeEntries);
+		trimScopeMap(dispatchBudgetByProject, maxStormScopeEntries);
+	}
+
+	private <T> void trimScopeMap(Map<String, T> map, int maxEntries) {
+		if (map.size() <= maxEntries) {
+			return;
+		}
+		int overflow = map.size() - maxEntries;
+		for (int index = 0; index < overflow; index++) {
+			String oldestKey = findOldestScopeKey(map);
+			if (oldestKey == null) {
+				return;
+			}
+			map.remove(oldestKey);
+		}
+	}
+
+	private <T> String findOldestScopeKey(Map<String, T> map) {
+		String oldestKey = null;
+		Instant oldestInstant = null;
+		for (Map.Entry<String, T> entry : map.entrySet()) {
+			Instant candidate = scopeInstant(entry.getValue());
+			if (candidate == null) {
+				continue;
+			}
+			if (oldestInstant == null || candidate.isBefore(oldestInstant)) {
+				oldestInstant = candidate;
+				oldestKey = entry.getKey();
+			}
+		}
+		return oldestKey;
+	}
+
+	private Instant scopeInstant(Object state) {
+		if (state instanceof Instant instant) {
+			return instant;
+		}
+		if (state instanceof DispatchBudgetState budgetState) {
+			return budgetState.windowStart();
+		}
+		return null;
+	}
+
 	private AlertDispatchResult suppressDispatch(
 		String projectId,
 		DispatchIncidentAlertCommand command,
@@ -432,7 +515,7 @@ public class AlertService {
 
 		boolean created = existing == null;
 		String id = created ? UUID.randomUUID().toString() : existing.id();
-		Instant updatedAt = Instant.now();
+		Instant updatedAt = clock.instant();
 
 		AlertChannelState updated = new AlertChannelState(id, type, true, updatedAt, config);
 		channels.put(type, updated);
@@ -454,7 +537,7 @@ public class AlertService {
 			action,
 			resourceType,
 			resourceId,
-			Instant.now(),
+			clock.instant(),
 			Map.copyOf(metadata)
 		));
 		while (logs.size() > maxAuditLogsPerProject) {

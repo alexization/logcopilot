@@ -38,8 +38,14 @@ class IncidentAlertDispatchFailureTest {
 
 		incidentService.recordIngestedEvents("project-1", List.of(event()));
 
+		ArgumentCaptor<AlertService.DispatchIncidentAlertCommand> commandCaptor =
+			ArgumentCaptor.forClass(AlertService.DispatchIncidentAlertCommand.class);
 		ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
-		verify(alertService, times(1)).recordDispatchFailure(anyString(), any(), reasonCaptor.capture());
+		verify(alertService, times(1)).recordDispatchFailure(anyString(), commandCaptor.capture(), reasonCaptor.capture());
+		AlertService.DispatchIncidentAlertCommand command = commandCaptor.getValue();
+		assertThat(command.service()).isEqualTo("api");
+		assertThat(command.severityScore()).isEqualTo(80);
+		assertThat(command.actorToken()).isEqualTo("system:incident");
 		assertThat(reasonCaptor.getValue()).contains("dispatch failed");
 	}
 

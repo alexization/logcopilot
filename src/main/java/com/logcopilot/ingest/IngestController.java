@@ -135,8 +135,9 @@ public class IngestController {
 
 	private void enforceIngestRateLimit(Authentication authentication, String idempotencyKey) {
 		String token = authentication == null ? null : authentication.getName();
-		if (!ingestRateLimiter.tryAcquire(token, idempotencyKey)) {
-			throw new TooManyRequestsException("Ingest rate limit exceeded");
+		IngestRateLimiter.AcquireResult acquireResult = ingestRateLimiter.tryAcquire(token, idempotencyKey);
+		if (!acquireResult.allowed()) {
+			throw new TooManyRequestsException("Ingest rate limit exceeded", acquireResult.retryAfterSeconds());
 		}
 	}
 

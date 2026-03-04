@@ -51,7 +51,7 @@ public class IncidentService {
 		this.alertService = null;
 	}
 
-	public synchronized void recordIngestedEvents(String projectId, List<CanonicalLogEvent> events) {
+	public void recordIngestedEvents(String projectId, List<CanonicalLogEvent> events) {
 		if (projectId == null || projectId.isBlank() || events == null || events.isEmpty()) {
 			return;
 		}
@@ -68,6 +68,7 @@ public class IncidentService {
 			eventsByService.computeIfAbsent(normalizedService, ignored -> new ArrayList<>()).add(event);
 		}
 
+		List<IncidentState> createdIncidents = new ArrayList<>();
 		for (Map.Entry<String, List<CanonicalLogEvent>> entry : eventsByService.entrySet()) {
 			String service = entry.getKey();
 			List<CanonicalLogEvent> serviceEvents = entry.getValue();
@@ -85,8 +86,17 @@ public class IncidentService {
 				timestampRange.lastSeen(),
 				report
 			);
-			incidentsById.put(state.id, state);
-			incidentIdsByProject.computeIfAbsent(projectId, ignored -> new ArrayList<>()).add(state.id);
+			createdIncidents.add(state);
+		}
+
+		synchronized (this) {
+			for (IncidentState state : createdIncidents) {
+				incidentsById.put(state.id, state);
+				incidentIdsByProject.computeIfAbsent(projectId, ignored -> new ArrayList<>()).add(state.id);
+			}
+		}
+
+		for (IncidentState state : createdIncidents) {
 			dispatchAlert(projectId, state);
 		}
 	}
