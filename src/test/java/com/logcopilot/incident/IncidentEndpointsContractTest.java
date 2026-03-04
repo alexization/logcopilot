@@ -179,6 +179,7 @@ class IncidentEndpointsContractTest {
 	void reanalyzeIncidentUsesLlmReportWhenAccountExists() throws Exception {
 		String projectId = createProjectId("incident-reanalyze-llm");
 		registerOpenAiLlmAccount(projectId);
+		configureRedactionPolicy(projectId);
 		ingestEvents(projectId, List.of(
 			event("evt-1", "2026-03-03T03:00:00Z", "api", "error", "first error")
 		));
@@ -187,15 +188,22 @@ class IncidentEndpointsContractTest {
 		mockMvc.perform(post("/v1/incidents/{incident_id}/reanalyze", incidentId)
 				.header("Authorization", "Bearer incident-token")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"reason\":\"new evidence\"}"))
+				.content("{\"reason\":\"new evidence token=abc password=pw-1\"}"))
 			.andExpect(status().isAccepted());
 
-		mockMvc.perform(get("/v1/incidents/{incident_id}", incidentId)
+		MvcResult detail = mockMvc.perform(get("/v1/incidents/{incident_id}", incidentId)
 				.header("Authorization", "Bearer incident-token"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.report.summary").value(org.hamcrest.Matchers.containsString("LLM-assisted")))
 			.andExpect(jsonPath("$.data.report.limitations[*]")
-				.value(org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("LLM"))));
+				.value(org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("LLM"))))
+			.andReturn();
+
+		String detailBody = detail.getResponse().getContentAsString();
+		assertThat(detailBody)
+			.contains("[REDACTED]")
+			.doesNotContain("token=abc")
+			.doesNotContain("password=pw-1");
 	}
 
 	@Test
@@ -210,14 +218,21 @@ class IncidentEndpointsContractTest {
 		mockMvc.perform(post("/v1/incidents/{incident_id}/reanalyze", incidentId)
 				.header("Authorization", "Bearer incident-token")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"reason\":\"new evidence\"}"))
+				.content("{\"reason\":\"new evidence token=abc password=pw-1\"}"))
 			.andExpect(status().isAccepted());
 
-		mockMvc.perform(get("/v1/incidents/{incident_id}", incidentId)
+		MvcResult detail = mockMvc.perform(get("/v1/incidents/{incident_id}", incidentId)
 				.header("Authorization", "Bearer incident-token"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.report.limitations[*]")
-				.value(org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("fallback report generated"))));
+				.value(org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("fallback report generated"))))
+			.andReturn();
+
+		String detailBody = detail.getResponse().getContentAsString();
+		assertThat(detailBody)
+			.contains("[REDACTED]")
+			.doesNotContain("token=abc")
+			.doesNotContain("password=pw-1");
 	}
 
 	@Test
@@ -338,6 +353,24 @@ class IncidentEndpointsContractTest {
 					}
 					"""))
 			.andExpect(status().isCreated());
+	}
+
+	private void configureRedactionPolicy(String projectId) throws Exception {
+		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+				.put("/v1/projects/{project_id}/policies/redaction", projectId)
+				.header("Authorization", "Bearer policy-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "enabled": true,
+					  "rules": [
+					    {"name":"token","pattern":"token=[^\\\\s]+","replace_with":"token=[REDACTED]"},
+					    {"name":"password","pattern":"password=[^\\\\s]+","replace_with":"password=[REDACTED]"},
+					    {"name":"secret","pattern":"secret=[^\\\\s]+","replace_with":"secret=[REDACTED]"}
+					  ]
+					}
+					"""))
+			.andExpect(status().isOk());
 	}
 
 	private String ingestEventsRequestBody(

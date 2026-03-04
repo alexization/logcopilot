@@ -1,5 +1,6 @@
 package com.logcopilot.incident.analyzer;
 
+import com.logcopilot.common.security.SensitiveDataSanitizer;
 import com.logcopilot.incident.domain.AnalysisReport;
 import com.logcopilot.incident.domain.Hypothesis;
 import org.springframework.stereotype.Component;
@@ -11,24 +12,40 @@ import java.util.List;
 public class FallbackIncidentAnalyzer {
 
 	public AnalysisReport fromRule(AnalysisReport ruleReport, String reasonCode) {
-		List<Hypothesis> hypotheses = ruleReport.hypotheses() == null
-			? List.of()
-			: List.copyOf(ruleReport.hypotheses());
-		List<String> nextActions = ruleReport.nextActions() == null
-			? List.of()
-			: List.copyOf(ruleReport.nextActions());
+		List<Hypothesis> hypotheses = sanitizeHypotheses(ruleReport.hypotheses());
+		List<String> nextActions = sanitizeTextList(ruleReport.nextActions());
 
-		List<String> limitations = new ArrayList<>();
-		if (ruleReport.limitations() != null) {
-			limitations.addAll(ruleReport.limitations());
-		}
+		List<String> limitations = new ArrayList<>(sanitizeTextList(ruleReport.limitations()));
 		limitations.add("LLM analysis unavailable; fallback report generated (" + reasonCode + ")");
 
 		return new AnalysisReport(
-			ruleReport.summary(),
+			SensitiveDataSanitizer.sanitize(ruleReport.summary()),
 			hypotheses,
 			nextActions,
 			limitations
 		);
+	}
+
+	private List<Hypothesis> sanitizeHypotheses(List<Hypothesis> hypotheses) {
+		if (hypotheses == null) {
+			return List.of();
+		}
+
+		return hypotheses.stream()
+			.map(hypothesis -> new Hypothesis(
+				SensitiveDataSanitizer.sanitize(hypothesis.cause()),
+				hypothesis.confidence(),
+				sanitizeTextList(hypothesis.evidence())
+			))
+			.toList();
+	}
+
+	private List<String> sanitizeTextList(List<String> values) {
+		if (values == null) {
+			return List.of();
+		}
+		return values.stream()
+			.map(SensitiveDataSanitizer::sanitize)
+			.toList();
 	}
 }

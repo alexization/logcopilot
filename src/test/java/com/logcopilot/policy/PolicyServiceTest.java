@@ -167,4 +167,73 @@ class PolicyServiceTest {
 			.isInstanceOf(BadRequestException.class)
 			.hasMessage("rules[0].pattern must be at most 512 characters");
 	}
+
+	@Test
+	@DisplayName("PolicyService는 redaction policy 규칙으로 LLM 전송 텍스트를 마스킹한다")
+	void redactForLlmAppliesPolicyRules() {
+		ProjectDto project = projectService.create("policy-redact-llm", "prod");
+		policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(
+				true,
+				List.of(
+					new PolicyService.RedactionRuleCommand("token", "token=[^\\s]+", "token=[REDACTED]"),
+					new PolicyService.RedactionRuleCommand("password", "password=[^\\s]+", "password=[REDACTED]"),
+					new PolicyService.RedactionRuleCommand("secret", "secret=[^\\s]+", "secret=[REDACTED]")
+				)
+			)
+		);
+
+		String redacted = policyService.redactForLlm(
+			project.id(),
+			"token=abc password=pw-1 secret=sec-1"
+		);
+
+		assertThat(redacted)
+			.isEqualTo("token=[REDACTED] password=[REDACTED] secret=[REDACTED]");
+	}
+
+	@Test
+	@DisplayName("PolicyService는 redaction policy가 없으면 LLM 전송 텍스트 redaction을 거부한다")
+	void redactForLlmThrowsWhenPolicyMissing() {
+		ProjectDto project = projectService.create("policy-redact-llm-missing", "prod");
+
+		assertThatThrownBy(() -> policyService.redactForLlm(project.id(), "token=abc"))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessage("Redaction policy is not configured");
+	}
+
+	@Test
+	@DisplayName("PolicyService는 redaction policy가 비활성화되면 LLM 전송 텍스트 redaction을 거부한다")
+	void redactForLlmThrowsWhenPolicyDisabled() {
+		ProjectDto project = projectService.create("policy-redact-llm-disabled", "prod");
+		policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(
+				false,
+				List.of(new PolicyService.RedactionRuleCommand("token", "token=[^\\s]+", "token=[REDACTED]"))
+			)
+		);
+
+		assertThatThrownBy(() -> policyService.redactForLlm(project.id(), "token=abc"))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessage("Redaction policy is disabled");
+	}
+
+	@Test
+	@DisplayName("PolicyService는 redaction 결과에 민감정보가 남아 있으면 LLM 전송 텍스트를 거부한다")
+	void redactForLlmRejectsUnmaskedSensitiveValues() {
+		ProjectDto project = projectService.create("policy-redact-llm-unmasked", "prod");
+		policyService.updateRedactionPolicy(
+			project.id(),
+			new PolicyService.RedactionPolicyCommand(
+				true,
+				List.of(new PolicyService.RedactionRuleCommand("secret", "secret=[^\\s]+", "secret=[MASKED]"))
+			)
+		);
+
+		assertThatThrownBy(() -> policyService.redactForLlm(project.id(), "token=abc"))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessage("Redaction did not mask all sensitive values");
+	}
 }

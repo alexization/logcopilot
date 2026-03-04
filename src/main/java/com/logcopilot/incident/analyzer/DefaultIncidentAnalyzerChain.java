@@ -1,5 +1,6 @@
 package com.logcopilot.incident.analyzer;
 
+import com.logcopilot.common.security.SensitiveDataSanitizer;
 import com.logcopilot.incident.domain.AnalysisReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +35,11 @@ public class DefaultIncidentAnalyzerChain implements IncidentAnalyzer {
 		try {
 			return llmIncidentAnalyzer.analyze(command, ruleReport);
 		} catch (RuntimeException exception) {
-			logger.warn("LLM analyzer failed for incident: {}", command.incidentId(), exception);
+			logger.warn(
+				"LLM analyzer failed for incident: {} (error={})",
+				command.incidentId(),
+				SensitiveDataSanitizer.sanitize(exception.getMessage())
+			);
 			return fallbackIncidentAnalyzer.fromRule(ruleReport, "llm_failure");
 		}
 	}
