@@ -73,4 +73,45 @@ class AdminUiIntegrationTest {
 			.andExpect(content().string(containsString("@media (max-width: 620px)")))
 			.andExpect(content().string(containsString(":focus-visible")));
 	}
+
+	@Test
+	@DisplayName("admin shell 은 T-20 운영 워크스페이스 골격을 포함한다")
+	void adminShellContainsOperationalWorkspaceScaffold() throws Exception {
+		mockMvc.perform(get("/admin/index.html"))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("data-nav=\"projects\"")))
+			.andExpect(content().string(containsString("data-nav=\"connectors\"")))
+			.andExpect(content().string(containsString("data-nav=\"llm\"")))
+			.andExpect(content().string(containsString("data-nav=\"policies\"")))
+			.andExpect(content().string(containsString("data-nav=\"alerts\"")))
+			.andExpect(content().string(containsString("data-nav=\"incidents\"")))
+			.andExpect(content().string(containsString("data-nav=\"audit\"")))
+			.andExpect(content().string(containsString("id=\"active-project-id\"")))
+			.andExpect(content().string(containsString("id=\"section-feedback\"")))
+			.andExpect(content().string(containsString("id=\"section-body\"")));
+	}
+
+	@Test
+	@DisplayName("admin app script 는 T-20 운영 API 경로와 렌더러를 포함한다")
+	void adminAppScriptContainsOperationalEndpointsAndRenderers() throws Exception {
+		mockMvc.perform(get("/admin/app.js"))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("renderProjectsSection")))
+			.andExpect(content().string(containsString("renderConnectorsSection")))
+			.andExpect(content().string(containsString("renderLlmSection")))
+			.andExpect(content().string(containsString("renderPoliciesSection")))
+			.andExpect(content().string(containsString("renderAlertsSection")))
+			.andExpect(content().string(containsString("renderIncidentsSection")))
+			.andExpect(content().string(containsString("renderAuditSection")))
+			.andExpect(content().string(containsString("window.open(")))
+			.andExpect(content().string(containsString("maskOAuthStartResult")))
+			.andExpect(content().string(containsString("/v1/projects")))
+			.andExpect(content().string(containsString("/connectors/loki")))
+			.andExpect(content().string(containsString("/llm-accounts/api-key")))
+			.andExpect(content().string(containsString("/policies/export")))
+			.andExpect(content().string(containsString("/alerts/slack")))
+			.andExpect(content().string(containsString("/alerts/email")))
+			.andExpect(content().string(containsString("/v1/incidents/")))
+			.andExpect(content().string(containsString("/audit-logs")));
+	}
 }
