@@ -35,12 +35,20 @@
   - `./gradlew check`
   - `./gradlew test`
   - `./gradlew build` (if required)
+  - `./scripts/verify-delivery-text.sh issue <issue-number>`
+  - `./scripts/verify-delivery-text.sh commit HEAD`
+  - `./scripts/verify-delivery-text.sh pr <pr-number>` (PR 단계에서)
 - Results:
 
 ## 6. Challenge Review ("딴지")
-- Reviewer model/agent:
-- Findings:
-- Resolution:
+- Run mode: parallel sub-agents on latest commit snapshot
+- Side-effect/regression reviewer: PASS | FAIL
+- Syntax/static quality reviewer: PASS | FAIL
+- Task requirement/AC fit reviewer: PASS | FAIL
+- Test correctness/completeness reviewer: PASS | FAIL
+- Findings summary:
+- Resolution summary:
+- Re-run evidence after fix (gates + sub-agents):
 
 ## 7. Commit Draft
 Use `docs/templates/commit-message.template.md`.

@@ -26,8 +26,12 @@ Use this checklist before closing each task.
 - [ ] `./gradlew build` passed (when required).
 
 ## Challenge Review ("딴지")
-- [ ] Independent reviewer checked for missing cases.
-- [ ] Reviewer checked regression/security/operability risks.
+- [ ] Challenge sub-agents ran in parallel on the latest commit snapshot.
+- [ ] Side-effect/regression reviewer: PASS.
+- [ ] Syntax/static quality reviewer: PASS.
+- [ ] Task requirement/AC fit reviewer: PASS.
+- [ ] Test correctness/completeness reviewer: PASS.
+- [ ] All FAIL findings were fixed, then gates + sub-agents were re-run.
 - [ ] Findings were resolved or tracked explicitly.
 
 ## Git as Execution History
@@ -39,8 +43,14 @@ Use this checklist before closing each task.
 - [ ] GitHub issue exists for this work unit.
 - [ ] Issue 본문이 한국어로 작성되었다.
 - [ ] Feature branch was created from `develop`.
+- [ ] `./scripts/verify-delivery-text.sh issue <issue-number>` passed.
+- [ ] `./scripts/verify-delivery-text.sh commit HEAD` passed.
+- [ ] PR was created only after all challenge sub-agents were PASS.
 - [ ] PR targets `develop` and links issue (`Closes #...`).
 - [ ] PR 제목/본문이 한국어로 작성되었다.
+- [ ] `./scripts/verify-delivery-text.sh pr <pr-number>` passed.
+- [ ] Issue/Commit/PR 본문에 깨진 문자(`�`) 또는 literal `\n` 노출이 없다.
+- [ ] 정정 코멘트를 남긴 경우, 이전 깨진 코멘트를 삭제했다.
 - [ ] coderabbitai/codex feedback reviewed and handled.
 - [ ] Follow-up commits were added for accepted review changes.
 - [ ] Commit 메시지가 한국어로 작성되었다.

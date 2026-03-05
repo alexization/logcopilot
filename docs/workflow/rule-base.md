@@ -17,6 +17,12 @@ Example:
 1. Test rules: unit/integration/e2e
 2. Build/check rules: Gradle verification gates
 3. Static rules: lint/security/architecture constraints (when configured)
+4. Delivery text rules: issue/commit/pr template/integrity checks
+
+Delivery text example:
+- `ACx -> Delivery Text -> ./scripts/verify-delivery-text.sh issue <issue-number> -> PASS`
+- `ACx -> Delivery Text -> ./scripts/verify-delivery-text.sh commit HEAD -> PASS`
+- `ACx -> Delivery Text -> ./scripts/verify-delivery-text.sh pr <pr-number> -> PASS`
 
 ## Hard Gates for This Repository
 - Mandatory: `./gradlew check`
