@@ -32,6 +32,14 @@ class SecurityEndpointsIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("bootstrap 상태 조회 엔드포인트는 인증 없이 접근 가능하다")
+	void bootstrapStatusIsAccessibleWithoutAuthorization() throws Exception {
+		mockMvc.perform(get("/v1/bootstrap/status"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.bootstrapped").exists());
+	}
+
+	@Test
 	@DisplayName("OAuth callback 엔드포인트는 인증 없이 접근 가능하다")
 	void oauthCallbackIsAccessibleWithoutAuthorization() throws Exception {
 		// 이 테스트는 보안 경계 확인이 목적이라, 인증 실패(401)만 아니면 허용한다.

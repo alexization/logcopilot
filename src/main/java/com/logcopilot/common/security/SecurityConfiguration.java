@@ -67,8 +67,9 @@ public class SecurityConfiguration {
 			.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 				.requestMatchers(SecurityPublicPathPolicy.PUBLIC_ENDPOINT_PATTERNS).permitAll()
+				.requestMatchers("/v1/tokens/**").hasRole("OPERATOR")
 				.requestMatchers("/v1/ingest/**").hasRole("INGEST")
-				.anyRequest().hasRole("API"))
+				.anyRequest().hasAnyRole("API", "OPERATOR"))
 			.addFilterBefore(bearerAuthenticationFilter, AnonymousAuthenticationFilter.class);
 
 		return http.build();

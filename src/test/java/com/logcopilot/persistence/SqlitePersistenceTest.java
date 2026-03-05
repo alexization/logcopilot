@@ -21,6 +21,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.List;
 import java.util.UUID;
 
@@ -157,12 +158,38 @@ class SqlitePersistenceTest {
 		assertThat(contains(dbBytes, "ingest-token")).isFalse();
 	}
 
+	@Test
+	void migratesLegacyTokenHashSchemaAndPreservesTokenLookup() throws Exception {
+		Path dbPath = tempDir.resolve("logcopilot-legacy-token-schema.sqlite");
+		deleteIfExists(dbPath);
+		String encryptionSecret = "ephemeral-" + UUID.randomUUID();
+		String legacyToken = "legacy-ingest-token";
+
+		createLegacyTokenHashTable(dbPath, legacyToken, "INGEST");
+
+		try (ConfigurableApplicationContext context = startContext(dbPath, encryptionSecret, false)) {
+			TokenHashStore tokenHashStore = context.getBean(TokenHashStore.class);
+			assertThat(tokenHashStore.findTokenType(legacyToken)).contains("INGEST");
+			assertThat(tokenHashStore.listTokens())
+				.anyMatch(token -> "INGEST".equals(token.tokenType()) && "ingest".equals(token.tokenRole()));
+		}
+	}
+
 	private ConfigurableApplicationContext startContext(Path dbPath, String encryptionSecret) {
+		return startContext(dbPath, encryptionSecret, true);
+	}
+
+	private ConfigurableApplicationContext startContext(
+		Path dbPath,
+		String encryptionSecret,
+		boolean seedDefaultTokens
+	) {
 		return new SpringApplicationBuilder(LogcopilotApplication.class)
 			.run(
 				"--server.port=0",
 				"--spring.task.scheduling.enabled=false",
 				"--logcopilot.persistence.enabled=true",
+				"--logcopilot.auth.seed-default-tokens=" + seedDefaultTokens,
 				"--logcopilot.persistence.sqlite-path=" + dbPath.toAbsolutePath(),
 				"--logcopilot.persistence.encryption-key=" + encryptionSecret,
 				"--logcopilot.llm.oauth.mode=" + LlmOAuthProperties.Mode.STUB.name().toLowerCase()
@@ -204,5 +231,37 @@ class SqlitePersistenceTest {
 
 	private boolean contains(byte[] source, String plainText) {
 		return new String(source, StandardCharsets.UTF_8).contains(plainText);
+	}
+
+	private void createLegacyTokenHashTable(Path dbPath, String plainToken, String tokenType) throws Exception {
+		String jdbcUrl = "jdbc:sqlite:" + dbPath.toAbsolutePath();
+		try (java.sql.Connection connection = java.sql.DriverManager.getConnection(jdbcUrl);
+		     java.sql.Statement statement = connection.createStatement()) {
+			statement.executeUpdate("""
+				create table if not exists bearer_token_hashes (
+					token_hash text primary key,
+					token_type text not null,
+					created_at text not null
+				)
+				""");
+			try (java.sql.PreparedStatement prepared = connection.prepareStatement(
+				"insert into bearer_token_hashes(token_hash, token_type, created_at) values (?, ?, ?)"
+			)) {
+				prepared.setString(1, hash(plainToken));
+				prepared.setString(2, tokenType);
+				prepared.setString(3, "2026-03-04T00:00:00Z");
+				prepared.executeUpdate();
+			}
+		}
+	}
+
+	private String hash(String plainToken) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] bytes = digest.digest(plainToken.getBytes(StandardCharsets.UTF_8));
+			return java.util.HexFormat.of().formatHex(bytes);
+		} catch (Exception exception) {
+			throw new IllegalStateException("Failed to hash token for test setup", exception);
+		}
 	}
 }

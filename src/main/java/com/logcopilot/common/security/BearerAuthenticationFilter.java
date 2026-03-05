@@ -67,9 +67,10 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
 	}
 
 	private String resolveAuthority(BearerTokenValidator.ValidatedToken validatedToken) {
-		return switch (validatedToken.type()) {
-			case INGEST -> "ROLE_INGEST";
+		return switch (validatedToken.role()) {
+			case OPERATOR -> "ROLE_OPERATOR";
 			case API -> "ROLE_API";
+			case INGEST -> "ROLE_INGEST";
 		};
 	}
 }

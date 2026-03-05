@@ -11,6 +11,8 @@ servers:
     description: Local self-hosted server
 tags:
   - name: System
+  - name: Bootstrap
+  - name: Tokens
   - name: Projects
   - name: Connectors
   - name: LLM Accounts
@@ -65,6 +67,148 @@ paths:
                 $ref: '#/components/schemas/SystemInfoResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /v1/bootstrap/status:
+    get:
+      tags: [Bootstrap]
+      summary: Check if initial bootstrap is completed
+      operationId: getBootstrapStatus
+      responses:
+        '200':
+          description: Bootstrap state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapStatusResponse'
+
+  /v1/bootstrap/initialize:
+    post:
+      tags: [Bootstrap]
+      summary: Initialize first project and initial operator/ingest tokens
+      operationId: initializeBootstrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootstrapInitializeRequest'
+      responses:
+        '201':
+          description: Bootstrap completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapInitializeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/tokens:
+    get:
+      tags: [Tokens]
+      summary: List issued tokens with lifecycle metadata
+      operationId: listTokens
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Token list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Tokens]
+      summary: Issue a new token
+      operationId: issueToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueTokenRequest'
+      responses:
+        '201':
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/tokens/{token_id}/rotate:
+    post:
+      tags: [Tokens]
+      summary: Rotate an active token and return a new token value
+      operationId: rotateToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TokenId'
+      responses:
+        '200':
+          description: Rotated token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/tokens/{token_id}/revoke:
+    post:
+      tags: [Tokens]
+      summary: Revoke a token
+      operationId: revokeToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TokenId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeTokenRequest'
+      responses:
+        '200':
+          description: Revoked token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenMetadataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /v1/projects:
     post:
@@ -640,6 +784,12 @@ components:
       required: true
       schema:
         type: string
+    TokenId:
+      name: token_id
+      in: path
+      required: true
+      schema:
+        type: string
     OAuthProvider:
       name: provider
       in: path
@@ -676,6 +826,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
       description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authorization failed
       content:
         application/json:
           schema:
@@ -797,6 +953,141 @@ components:
               additionalProperties:
                 type: boolean
           required: [version, storage_mode, queue_mode, features]
+      required: [data]
+
+    BootstrapStatusResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            bootstrapped:
+              type: boolean
+            initialized_at:
+              type: string
+              format: date-time
+              nullable: true
+          required: [bootstrapped]
+      required: [data]
+
+    BootstrapInitializeRequest:
+      type: object
+      properties:
+        project_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        environment:
+          type: string
+          enum: [prod, staging, dev]
+        operator_token_name:
+          type: string
+          maxLength: 80
+          nullable: true
+        ingest_token_name:
+          type: string
+          maxLength: 80
+          nullable: true
+      required: [project_name, environment]
+
+    TokenRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [operator, api, ingest]
+        status:
+          type: string
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+        rotated_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        revocation_reason:
+          type: string
+          nullable: true
+      required: [id, name, role, status, created_at]
+
+    TokenRecordWithValue:
+      allOf:
+        - $ref: '#/components/schemas/TokenRecord'
+        - type: object
+          properties:
+            token:
+              type: string
+          required: [token]
+
+    BootstrapInitializeResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            bootstrapped:
+              type: boolean
+            initialized_at:
+              type: string
+              format: date-time
+            project:
+              $ref: '#/components/schemas/Project'
+            operator_token:
+              $ref: '#/components/schemas/TokenRecordWithValue'
+            ingest_token:
+              $ref: '#/components/schemas/TokenRecordWithValue'
+          required: [bootstrapped, initialized_at, project, operator_token, ingest_token]
+      required: [data]
+
+    IssueTokenRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          nullable: true
+        role:
+          type: string
+          enum: [operator, api, ingest]
+      required: [role]
+
+    RevokeTokenRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 200
+
+    TokenResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TokenRecordWithValue'
+      required: [data]
+
+    TokenMetadataResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TokenRecord'
+      required: [data]
+
+    TokenListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenRecord'
       required: [data]
 
     Project:
