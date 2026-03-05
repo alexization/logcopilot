@@ -7,6 +7,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -52,7 +55,7 @@ public class BearerTokenValidator {
 	BearerTokenValidator(TokenHashStore tokenHashStore, boolean seedDefaultTokens) {
 		this.tokenHashStore = tokenHashStore;
 		if (this.tokenHashStore != null && seedDefaultTokens) {
-			this.tokenHashStore.ensureDefaults(VERIFIED_TOKEN_TYPES);
+			seedDefaultTokens();
 		}
 	}
 
@@ -116,6 +119,35 @@ public class BearerTokenValidator {
 		return new ValidatedToken(token, resolvedType, fallbackRole);
 	}
 
+	private void seedDefaultTokens() {
+		try {
+			for (Map.Entry<String, SeedToken> entry : VERIFIED_TOKENS.entrySet()) {
+				String plainToken = entry.getKey();
+				SeedToken seedToken = entry.getValue();
+				String role = seedToken.role().apiValue();
+				tokenHashStore.issueToken(
+					"legacy-" + hash(plainToken).substring(0, 16),
+					plainToken,
+					seedToken.type().name(),
+					role,
+					"legacy-" + role
+				);
+			}
+		} catch (UnsupportedOperationException unsupportedOperationException) {
+			tokenHashStore.ensureDefaults(VERIFIED_TOKEN_TYPES);
+		}
+	}
+
+	private String hash(String plainToken) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] bytes = digest.digest(plainToken.getBytes(StandardCharsets.UTF_8));
+			return HexFormat.of().formatHex(bytes);
+		} catch (Exception exception) {
+			throw new IllegalStateException("Failed to hash token", exception);
+		}
+	}
+
 	private TokenType toTokenType(String value) {
 		if (value == null || value.isBlank()) {
 			return null;
@@ -158,7 +190,11 @@ public class BearerTokenValidator {
 	public enum TokenRole {
 		OPERATOR,
 		API,
-		INGEST
+		INGEST;
+
+		public String apiValue() {
+			return name().toLowerCase(Locale.ROOT);
+		}
 	}
 
 	private record SeedToken(

@@ -193,6 +193,15 @@ public class SqliteTokenHashStore implements TokenHashStore {
 					revocation_reason
 				)
 				values (?, ?, ?, ?, ?, 'active', ?, null, null, null)
+				on conflict(token_id) do update set
+					token_hash = excluded.token_hash,
+					token_type = excluded.token_type,
+					token_role = excluded.token_role,
+					display_name = excluded.display_name,
+					status = 'active',
+					rotated_at = null,
+					revoked_at = null,
+					revocation_reason = null
 			""",
 			normalizedTokenId,
 			hash(normalizedToken),
@@ -248,13 +257,14 @@ public class SqliteTokenHashStore implements TokenHashStore {
 					revoked_at = ?,
 					revocation_reason = ?
 				where token_id = ?
+				  and status = 'active'
 			""",
 			Instant.now().toString(),
 			normalize(reason),
 			normalizedTokenId
 		);
 		if (updated == 0) {
-			return Optional.empty();
+			return readById(normalizedTokenId);
 		}
 		return readById(normalizedTokenId);
 	}

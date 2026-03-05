@@ -1223,7 +1223,12 @@
 					const bootstrap = await refreshBootstrapStatus();
 					renderOverviewSection();
 					setPreview(bootstrap);
-					setSectionFeedback("초기 bootstrap을 완료해 주세요.", "info");
+					setSectionFeedback(
+						state.bootstrapStatus.bootstrapped
+							? "API 토큰을 먼저 설정해 주세요."
+							: "초기 bootstrap을 완료해 주세요.",
+						"info"
+					);
 					return;
 				} catch (error) {
 					handleSectionError("bootstrap 상태 조회에 실패했습니다.", error);
@@ -1841,8 +1846,11 @@
 
 	function createApiClient(getToken) {
 		return {
-			getBootstrapStatus: () => request("/v1/bootstrap/status"),
-			initializeBootstrap: (payload) => request("/v1/bootstrap/initialize", { method: "POST", body: payload }),
+			getBootstrapStatus: () => request("/v1/bootstrap/status", { skipAuth: true }),
+			initializeBootstrap: (payload) => request(
+				"/v1/bootstrap/initialize",
+				{ method: "POST", body: payload, skipAuth: true }
+			),
 			getSystemInfo: () => request("/v1/system/info"),
 			listProjects: () => request("/v1/projects"),
 			createProject: (payload) => request("/v1/projects", { method: "POST", body: payload }),
@@ -1907,7 +1915,7 @@
 
 		function request(path, options) {
 			const config = options || {};
-			const token = getToken();
+			const token = config.skipAuth ? "" : getToken();
 			const hasBody = config.body !== undefined && config.body !== null;
 			const headers = {
 				"Accept": "application/json",

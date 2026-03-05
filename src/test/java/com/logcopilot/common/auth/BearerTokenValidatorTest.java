@@ -1,6 +1,7 @@
 package com.logcopilot.common.auth;
 
 import com.logcopilot.common.error.UnauthorizedException;
+import com.logcopilot.common.persistence.InMemoryTokenHashStore;
 import com.logcopilot.common.persistence.TokenHashStore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -95,6 +96,21 @@ class BearerTokenValidatorTest {
 
 		assertThat(token.value()).isEqualTo("ingest-token");
 		assertThat(token.type()).isEqualTo(BearerTokenValidator.TokenType.INGEST);
+	}
+
+	@Test
+	@DisplayName("BearerTokenValidator는 hash 저장소 시드 토큰의 역할 매핑을 유지한다")
+	void preservesSeededRoleMappingWhenTokenStoreIsPresent() {
+		TokenHashStore tokenHashStore = new InMemoryTokenHashStore();
+		BearerTokenValidator hashBackedValidator = new BearerTokenValidator(tokenHashStore, true);
+
+		BearerTokenValidator.ValidatedToken operator = hashBackedValidator.validate("Bearer test-token");
+		BearerTokenValidator.ValidatedToken api = hashBackedValidator.validate("Bearer api-token");
+
+		assertThat(operator.type()).isEqualTo(BearerTokenValidator.TokenType.API);
+		assertThat(operator.role()).isEqualTo(BearerTokenValidator.TokenRole.OPERATOR);
+		assertThat(api.type()).isEqualTo(BearerTokenValidator.TokenType.API);
+		assertThat(api.role()).isEqualTo(BearerTokenValidator.TokenRole.API);
 	}
 
 	@Test

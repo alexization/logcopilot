@@ -192,6 +192,28 @@ class SqlitePersistenceTest {
 		}
 	}
 
+	@Test
+	void revokeTokenIsIdempotentForAlreadyRevokedToken() {
+		Path dbPath = tempDir.resolve("logcopilot-revoke-idempotent.sqlite");
+		deleteIfExists(dbPath);
+		String encryptionSecret = "ephemeral-" + UUID.randomUUID();
+
+		try (ConfigurableApplicationContext context = startContext(dbPath, encryptionSecret, false)) {
+			TokenHashStore tokenHashStore = context.getBean(TokenHashStore.class);
+			tokenHashStore.issueToken("token-idempotent", "plain-token-idempotent", "API", "api", "idempotent");
+
+			TokenHashStore.TokenRecord firstRevoked = tokenHashStore.revokeToken("token-idempotent", "first-reason")
+				.orElseThrow();
+			TokenHashStore.TokenRecord secondRevoked = tokenHashStore.revokeToken("token-idempotent", "second-reason")
+				.orElseThrow();
+
+			assertThat(firstRevoked.status()).isEqualTo("revoked");
+			assertThat(secondRevoked.status()).isEqualTo("revoked");
+			assertThat(secondRevoked.revokedAt()).isEqualTo(firstRevoked.revokedAt());
+			assertThat(secondRevoked.revocationReason()).isEqualTo("first-reason");
+		}
+	}
+
 	private ConfigurableApplicationContext startContext(Path dbPath, String encryptionSecret) {
 		return startContext(dbPath, encryptionSecret, true);
 	}

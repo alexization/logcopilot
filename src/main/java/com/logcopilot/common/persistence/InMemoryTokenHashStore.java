@@ -188,6 +188,9 @@ public class InMemoryTokenHashStore implements TokenHashStore {
 		if (previous == null) {
 			return Optional.empty();
 		}
+		if ("revoked".equals(previous.status())) {
+			return Optional.of(toRecord(previous));
+		}
 
 		tokenIdByHash.remove(previous.tokenHash());
 		TokenState revoked = new TokenState(

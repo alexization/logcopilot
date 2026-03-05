@@ -129,7 +129,8 @@ public class BootstrapService {
 					initializedAt = snapshot.initializedAt();
 				});
 		}
-		if (!bootstrapped && !tokenLifecycleService.listTokens().isEmpty()) {
+		if (!bootstrapped && tokenLifecycleService.listTokens().stream()
+			.anyMatch(token -> "active".equalsIgnoreCase(token.status()))) {
 			bootstrapped = true;
 		}
 	}
