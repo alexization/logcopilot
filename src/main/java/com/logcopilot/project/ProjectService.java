@@ -68,6 +68,19 @@ public class ProjectService {
 		return projectsById.containsKey(projectId);
 	}
 
+	public synchronized boolean delete(String projectId) {
+		if (projectId == null || projectId.isBlank()) {
+			return false;
+		}
+		ProjectDto removed = projectsById.remove(projectId);
+		if (removed == null) {
+			return false;
+		}
+		projectIdByNameKey.remove(removed.name().toLowerCase(Locale.ROOT));
+		persistState();
+		return true;
+	}
+
 	private String validateName(String name) {
 		if (name == null) {
 			throw new BadRequestException("Project name must be between 1 and 100 characters");

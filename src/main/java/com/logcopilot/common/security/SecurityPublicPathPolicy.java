@@ -13,6 +13,8 @@ public final class SecurityPublicPathPolicy {
 		"/favicon.ico",
 		"/admin",
 		"/admin/**",
+		"/v1/bootstrap/status",
+		"/v1/bootstrap/initialize",
 		"/v1/projects/*/llm-oauth/*/callback"
 	};
 

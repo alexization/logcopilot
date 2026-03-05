@@ -4,7 +4,7 @@
 	const SECTION_TEXT = {
 		overview: {
 			title: "개요",
-			description: "시스템 상태와 프로젝트 컨텍스트를 확인합니다."
+			description: "bootstrap 상태, 시스템 개요, 토큰 수명주기를 관리합니다."
 		},
 		projects: {
 			title: "프로젝트",
@@ -40,6 +40,11 @@
 		activeNav: "overview",
 		token: "",
 		toastTimer: null,
+		bootstrapStatus: {
+			bootstrapped: false,
+			initialized_at: null
+		},
+		tokens: [],
 		projects: [],
 		activeProjectId: "",
 		llmAccounts: [],
@@ -87,7 +92,19 @@
 	wireGlobalEvents();
 	bootstrap();
 
-	function bootstrap() {
+	async function bootstrap() {
+		try {
+			await refreshBootstrapStatus();
+		} catch (error) {
+			state.bootstrapStatus = {
+				bootstrapped: false,
+				initialized_at: null
+			};
+			setPreview({
+				status: "error",
+				message: "bootstrap 상태 조회 실패: " + errorMessage(error)
+			});
+		}
 		updateAuthStatus();
 		activateNav(state.activeNav);
 	}
@@ -100,6 +117,10 @@
 		});
 
 		elements.connectButton.addEventListener("click", async () => {
+			if (!state.bootstrapStatus.bootstrapped) {
+				showToast("먼저 bootstrap을 완료해 주세요.");
+				return;
+			}
 			const token = elements.tokenInput.value.trim();
 			if (!token) {
 				showToast("API 토큰을 입력해 주세요.");
@@ -126,6 +147,7 @@
 	}
 
 	function clearCachedData() {
+		state.tokens = [];
 		state.projects = [];
 		updateActiveProject("");
 	}
@@ -211,25 +233,167 @@
 
 	function renderOverviewSection() {
 		const hasToken = Boolean(getStoredToken());
+		const bootstrapCompleted = Boolean(state.bootstrapStatus && state.bootstrapStatus.bootstrapped);
+		if (!bootstrapCompleted) {
+			setSectionBody(
+				"<article class=\"workspace-card\">" +
+					"<h3>초기 bootstrap</h3>" +
+					"<p class=\"muted\">빈 상태에서는 bootstrap을 먼저 실행해야 운영 토큰이 발급됩니다.</p>" +
+					"<form id=\"bootstrap-form\" class=\"form-grid\">" +
+						"<label for=\"bootstrap-project-name\">기본 프로젝트 이름</label>" +
+						"<input id=\"bootstrap-project-name\" type=\"text\" maxlength=\"100\" placeholder=\"bootstrap-core\" required>" +
+						"<label for=\"bootstrap-environment\">환경</label>" +
+						"<select id=\"bootstrap-environment\">" +
+							"<option value=\"prod\">prod</option>" +
+							"<option value=\"staging\">staging</option>" +
+							"<option value=\"dev\">dev</option>" +
+						"</select>" +
+						"<label for=\"bootstrap-operator-token-name\">운영자 토큰 이름</label>" +
+						"<input id=\"bootstrap-operator-token-name\" type=\"text\" maxlength=\"80\" placeholder=\"ui-admin\">" +
+						"<label for=\"bootstrap-ingest-token-name\">ingest 토큰 이름</label>" +
+						"<input id=\"bootstrap-ingest-token-name\" type=\"text\" maxlength=\"80\" placeholder=\"collector\">" +
+						"<div class=\"inline-actions\">" +
+							"<button type=\"submit\">bootstrap 실행</button>" +
+							"<button type=\"button\" class=\"secondary\" id=\"bootstrap-status-refresh\">상태 새로고침</button>" +
+						"</div>" +
+					"</form>" +
+					"<pre class=\"preview preview-inline\" id=\"bootstrap-result\">아직 bootstrap이 완료되지 않았습니다.</pre>" +
+				"</article>"
+			);
+
+			const bootstrapForm = queryInSection("#bootstrap-form");
+			const bootstrapStatusRefresh = queryInSection("#bootstrap-status-refresh");
+			const bootstrapResult = queryInSection("#bootstrap-result");
+
+			if (bootstrapForm) {
+				bootstrapForm.addEventListener("submit", async (event) => {
+					event.preventDefault();
+					try {
+						const payload = {
+							project_name: valueOf("#bootstrap-project-name").trim(),
+							environment: valueOf("#bootstrap-environment").trim() || "prod",
+							operator_token_name: valueOf("#bootstrap-operator-token-name").trim() || null,
+							ingest_token_name: valueOf("#bootstrap-ingest-token-name").trim() || null
+						};
+						const response = await apiClient.initializeBootstrap(payload);
+						if (bootstrapResult) {
+							bootstrapResult.textContent = formatJson(response);
+						}
+						state.bootstrapStatus = response && response.data
+							? {
+								bootstrapped: Boolean(response.data.bootstrapped),
+								initialized_at: response.data.initialized_at || null
+							}
+							: { bootstrapped: true, initialized_at: null };
+						const operatorToken = response && response.data && response.data.operator_token
+							? response.data.operator_token.token
+							: "";
+						if (operatorToken) {
+							state.token = operatorToken;
+							elements.tokenInput.value = operatorToken;
+						}
+						await refreshProjects();
+						await refreshTokens();
+						updateAuthStatus();
+						setSectionFeedback("bootstrap이 완료되었습니다. 운영자 토큰이 자동 설정되었습니다.", "success");
+						setPreview(response);
+						renderOverviewSection();
+					} catch (error) {
+						handleSectionError("bootstrap 실행에 실패했습니다.", error);
+					}
+				});
+			}
+
+			if (bootstrapStatusRefresh) {
+				bootstrapStatusRefresh.addEventListener("click", async () => {
+					try {
+						const response = await refreshBootstrapStatus();
+						if (bootstrapResult) {
+							bootstrapResult.textContent = formatJson(response);
+						}
+						setSectionFeedback("bootstrap 상태를 갱신했습니다.", "success");
+						renderOverviewSection();
+					} catch (error) {
+						handleSectionError("bootstrap 상태 조회에 실패했습니다.", error);
+					}
+				});
+			}
+
+			setSectionFeedback("초기 bootstrap을 완료해 주세요.", "info");
+			setPreview({
+				bootstrap_status: state.bootstrapStatus
+			});
+			return;
+		}
+
 		setSectionBody(
 			"<div class=\"workspace-grid\">" +
 				"<article class=\"workspace-card\">" +
 					"<h3>운영 상태</h3>" +
-					"<p class=\"muted\">토큰이 설정되어야 API 작업이 가능합니다.</p>" +
+					"<p class=\"muted\">bootstrap 완료 이후 토큰이 설정되어야 API 작업이 가능합니다.</p>" +
 					"<p><strong>토큰 상태:</strong> " + (hasToken ? "설정됨" : "미설정") + "</p>" +
+					"<p><strong>bootstrap 완료 시각:</strong> " + escapeHtml(formatDateTime(state.bootstrapStatus.initialized_at)) + "</p>" +
 					"<button type=\"button\" class=\"secondary\" id=\"overview-load-button\">개요 데이터 조회</button>" +
 				"</article>" +
 				"<article class=\"workspace-card\">" +
 					"<h3>프로젝트 스냅샷</h3>" +
 					renderProjectListTable(state.projects, true) +
 				"</article>" +
+				"<article class=\"workspace-card\">" +
+					"<h3>토큰 수명주기</h3>" +
+					"<form id=\"issue-token-form\" class=\"form-grid\">" +
+						"<label for=\"issue-token-name\">토큰 이름</label>" +
+						"<input id=\"issue-token-name\" type=\"text\" maxlength=\"80\" placeholder=\"ci-agent\">" +
+						"<label for=\"issue-token-role\">역할</label>" +
+						"<select id=\"issue-token-role\">" +
+							"<option value=\"operator\">operator</option>" +
+							"<option value=\"api\" selected>api</option>" +
+							"<option value=\"ingest\">ingest</option>" +
+						"</select>" +
+						"<div class=\"inline-actions\">" +
+							"<button type=\"submit\">토큰 발급</button>" +
+							"<button type=\"button\" class=\"secondary\" id=\"refresh-tokens-button\">목록 새로고침</button>" +
+						"</div>" +
+					"</form>" +
+					renderTokensTable(state.tokens) +
+				"</article>" +
 			"</div>"
 		);
 
 		const loadButton = queryInSection("#overview-load-button");
+		const issueTokenForm = queryInSection("#issue-token-form");
+		const refreshTokensButton = queryInSection("#refresh-tokens-button");
+		const rotateButtons = Array.from(queryInSectionAll(".rotate-token-button"));
+		const revokeButtons = Array.from(queryInSectionAll(".revoke-token-button"));
 		if (loadButton) {
 			loadButton.addEventListener("click", () => {
 				refreshCurrentSection();
+			});
+		}
+
+		if (issueTokenForm) {
+			issueTokenForm.addEventListener("submit", async (event) => {
+				event.preventDefault();
+				if (!hasToken) {
+					setSectionFeedback("API 토큰을 입력하면 시스템/프로젝트 데이터를 조회할 수 있습니다.", "info");
+					setPreview("API 조회를 위해 토큰을 먼저 설정해 주세요.");
+					showToast("API 토큰을 먼저 설정해 주세요.");
+					return;
+				}
+				try {
+					requireToken();
+					const payload = {
+						name: valueOf("#issue-token-name").trim() || null,
+						role: valueOf("#issue-token-role").trim() || "api"
+					};
+					const response = await apiClient.issueToken(payload);
+					await refreshTokens();
+					setSectionFeedback("토큰을 발급했습니다.", "success");
+					setPreview(response);
+					renderOverviewSection();
+				} catch (error) {
+					handleSectionError("토큰 발급에 실패했습니다.", error);
+				}
 			});
 		}
 
@@ -238,6 +402,56 @@
 			setPreview("API 조회를 위해 토큰을 먼저 설정해 주세요.");
 			return;
 		}
+
+		if (refreshTokensButton) {
+			refreshTokensButton.addEventListener("click", async () => {
+				try {
+					const response = await refreshTokens();
+					setSectionFeedback("토큰 목록을 갱신했습니다.", "success");
+					setPreview(response);
+					renderOverviewSection();
+				} catch (error) {
+					handleSectionError("토큰 목록 조회에 실패했습니다.", error);
+				}
+			});
+		}
+
+		rotateButtons.forEach((button) => {
+			button.addEventListener("click", async () => {
+				const tokenId = button.getAttribute("data-token-id") || "";
+				if (!tokenId) {
+					return;
+				}
+				try {
+					const response = await apiClient.rotateToken(tokenId);
+					await refreshTokens();
+					setSectionFeedback("토큰을 회전했습니다. 새 토큰은 Preview에서 확인하세요.", "success");
+					setPreview(response);
+					renderOverviewSection();
+				} catch (error) {
+					handleSectionError("토큰 회전에 실패했습니다.", error);
+				}
+			});
+		});
+
+		revokeButtons.forEach((button) => {
+			button.addEventListener("click", async () => {
+				const tokenId = button.getAttribute("data-token-id") || "";
+				if (!tokenId) {
+					return;
+				}
+				try {
+					const response = await apiClient.revokeToken(tokenId, { reason: "revoked-from-admin-ui" });
+					await refreshTokens();
+					setSectionFeedback("토큰을 폐기했습니다.", "success");
+					setPreview(response);
+					renderOverviewSection();
+				} catch (error) {
+					handleSectionError("토큰 폐기에 실패했습니다.", error);
+				}
+			});
+		});
+
 		setSectionHint("새로고침 또는 '개요 데이터 조회'로 최신 상태를 확인하세요.");
 	}
 
@@ -1004,6 +1218,23 @@
 
 	async function refreshCurrentSection() {
 		if (!getStoredToken()) {
+			if (state.activeNav === "overview" && !state.bootstrapStatus.bootstrapped) {
+				try {
+					const bootstrap = await refreshBootstrapStatus();
+					renderOverviewSection();
+					setPreview(bootstrap);
+					setSectionFeedback(
+						state.bootstrapStatus.bootstrapped
+							? "API 토큰을 먼저 설정해 주세요."
+							: "초기 bootstrap을 완료해 주세요.",
+						"info"
+					);
+					return;
+				} catch (error) {
+					handleSectionError("bootstrap 상태 조회에 실패했습니다.", error);
+					return;
+				}
+			}
 			setSectionFeedback("API 토큰을 먼저 설정해 주세요.", "error");
 			setPreview("API 조회를 위해 토큰을 먼저 설정해 주세요.");
 			return;
@@ -1056,14 +1287,41 @@
 	}
 
 	async function loadOverviewData() {
+		const bootstrap = await refreshBootstrapStatus();
+		if (!state.bootstrapStatus.bootstrapped) {
+			return {
+				bootstrap
+			};
+		}
 		requireToken();
 		const systemInfo = await apiClient.getSystemInfo();
 		const projects = await refreshProjects();
+		const tokens = await refreshTokens();
 		return {
+			bootstrap,
 			systemInfo,
 			projects,
+			tokens,
 			active_project_id: state.activeProjectId || null
 		};
+	}
+
+	async function refreshBootstrapStatus() {
+		try {
+			const response = await apiClient.getBootstrapStatus();
+			const data = response && response.data ? response.data : {};
+			state.bootstrapStatus = {
+				bootstrapped: Boolean(data.bootstrapped),
+				initialized_at: data.initialized_at || null
+			};
+			return response;
+		} catch (error) {
+			state.bootstrapStatus = {
+				bootstrapped: false,
+				initialized_at: null
+			};
+			throw error;
+		}
 	}
 
 	async function refreshProjects() {
@@ -1073,6 +1331,13 @@
 		reconcileActiveProject();
 		renderActiveProject();
 		return projects;
+	}
+
+	async function refreshTokens() {
+		requireToken();
+		const response = await apiClient.listTokens();
+		state.tokens = response && Array.isArray(response.data) ? response.data : [];
+		return response;
 	}
 
 	function reconcileActiveProject() {
@@ -1170,6 +1435,40 @@
 
 		return "<div class=\"table-wrap\"><table class=\"data-table\">" +
 			"<thead><tr><th>ID</th><th>Name</th><th>Env</th><th>Created</th><th>Action</th></tr></thead>" +
+			"<tbody>" + rows + "</tbody>" +
+		"</table></div>";
+	}
+
+	function renderTokensTable(tokens) {
+		if (!tokens || tokens.length === 0) {
+			return "<p class=\"empty-state\">등록된 토큰이 없습니다.</p>";
+		}
+
+		const rows = tokens.map((token) => {
+			const id = safeString(token && token.id);
+			const status = safeString(token && token.status);
+			const canManage = status === "active";
+			return "<tr>" +
+				"<td><code>" + escapeHtml(id) + "</code></td>" +
+				"<td>" + escapeHtml(safeString(token && token.name)) + "</td>" +
+				"<td>" + escapeHtml(safeString(token && token.role)) + "</td>" +
+				"<td>" + escapeHtml(status) + "</td>" +
+				"<td>" + escapeHtml(formatDateTime(token && token.created_at)) + "</td>" +
+				"<td>" + escapeHtml(formatDateTime(token && token.rotated_at)) + "</td>" +
+				"<td>" + escapeHtml(formatDateTime(token && token.revoked_at)) + "</td>" +
+				"<td>" +
+					(canManage
+						? "<button type=\"button\" class=\"secondary rotate-token-button\" data-token-id=\"" + escapeHtml(id) + "\">회전</button>"
+						: "-") +
+					(canManage
+						? " <button type=\"button\" class=\"secondary revoke-token-button\" data-token-id=\"" + escapeHtml(id) + "\">폐기</button>"
+						: "") +
+				"</td>" +
+			"</tr>";
+		}).join("");
+
+		return "<div class=\"table-wrap\"><table class=\"data-table\">" +
+			"<thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Status</th><th>Created</th><th>Rotated</th><th>Revoked</th><th>Action</th></tr></thead>" +
 			"<tbody>" + rows + "</tbody>" +
 		"</table></div>";
 	}
@@ -1288,6 +1587,9 @@
 	}
 
 	function requireToken() {
+		if (!state.bootstrapStatus.bootstrapped) {
+			throw new Error("초기 bootstrap을 먼저 완료해 주세요.");
+		}
 		if (!getStoredToken()) {
 			throw new Error("API 토큰을 먼저 설정해 주세요.");
 		}
@@ -1354,6 +1656,11 @@
 	}
 
 	function updateAuthStatus() {
+		if (!state.bootstrapStatus.bootstrapped) {
+			elements.authStatus.textContent = "초기 bootstrap이 필요합니다. bootstrap 완료 시 운영자 토큰이 자동 설정됩니다.";
+			elements.authStatus.style.color = "#6a5a47";
+			return;
+		}
 		if (getStoredToken()) {
 			elements.authStatus.textContent = "토큰이 메모리에 설정되었습니다. API 요청 시 Authorization 헤더를 사용합니다.";
 			elements.authStatus.style.color = "#1f5c47";
@@ -1539,9 +1846,21 @@
 
 	function createApiClient(getToken) {
 		return {
+			getBootstrapStatus: () => request("/v1/bootstrap/status", { skipAuth: true }),
+			initializeBootstrap: (payload) => request(
+				"/v1/bootstrap/initialize",
+				{ method: "POST", body: payload, skipAuth: true }
+			),
 			getSystemInfo: () => request("/v1/system/info"),
 			listProjects: () => request("/v1/projects"),
 			createProject: (payload) => request("/v1/projects", { method: "POST", body: payload }),
+			listTokens: () => request("/v1/tokens"),
+			issueToken: (payload) => request("/v1/tokens", { method: "POST", body: payload }),
+			rotateToken: (tokenId) => request("/v1/tokens/" + encode(tokenId) + "/rotate", { method: "POST" }),
+			revokeToken: (tokenId, payload) => request(
+				"/v1/tokens/" + encode(tokenId) + "/revoke",
+				{ method: "POST", body: payload }
+			),
 			upsertLokiConnector: (projectId, payload) => request(
 				"/v1/projects/" + encode(projectId) + "/connectors/loki",
 				{ method: "POST", body: payload }
@@ -1596,7 +1915,7 @@
 
 		function request(path, options) {
 			const config = options || {};
-			const token = getToken();
+			const token = config.skipAuth ? "" : getToken();
 			const hasBody = config.body !== undefined && config.body !== null;
 			const headers = {
 				"Accept": "application/json",
