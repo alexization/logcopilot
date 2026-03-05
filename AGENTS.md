@@ -24,11 +24,16 @@ Domain knowledge is documented under `docs/domain/`.
 5. Follow RED -> GREEN -> REFACTOR.
 6. Execute rule-base mapping (`AC -> rule -> command`).
 7. Run verification gates.
-8. Run challenge review ("딴지").
-9. Commit with template and handoff note.
-10. Open/update PR to `develop` with `gh pr`.
-11. Resolve coderabbitai/codex review feedback with follow-up commits.
-12. Merge PR to `develop` only after checks/reviews are satisfied.
+8. Run parallel challenge sub-agents ("딴지") for:
+   - side-effect/regression risk
+   - syntax/static quality
+   - task/AC requirement fit
+   - test correctness/completeness
+9. If any sub-agent fails, fix and repeat Step 7-8 until all pass.
+10. Commit with template and handoff note.
+11. Open/update PR to `develop` with `gh pr`.
+12. Resolve coderabbitai/codex review feedback with follow-up commits.
+13. Merge PR to `develop` only after checks/reviews are satisfied.
 
 ## Branch Policy
 - `main`: final production code only
@@ -39,6 +44,26 @@ Domain knowledge is documented under `docs/domain/`.
 - `./gradlew check`
 - `./gradlew test`
 - `./gradlew build` (when dependency/config/cross-module impact exists)
+
+## Delivery Text Integrity Gate (Mandatory)
+- Validate Issue/Commit/PR text with `./scripts/verify-delivery-text.sh`.
+- Validate template section completeness and text integrity:
+  - no literal `\n` in body
+  - no broken replacement character (`�`)
+- Recommended commands:
+  - `./scripts/verify-delivery-text.sh issue <issue-number>`
+  - `./scripts/verify-delivery-text.sh commit HEAD`
+  - `./scripts/verify-delivery-text.sh pr <pr-number>`
+
+## Pre-PR Sub-agent Gate (Mandatory)
+- Do not create or update PR until all challenge sub-agents return PASS.
+- Sub-agents must run in parallel and use the same latest commit snapshot.
+- Required pass domains:
+  - side-effect/regression risk
+  - syntax/static quality
+  - task/AC requirement fit
+  - test correctness/completeness
+- Any FAIL requires returning to implementation + verification loop.
 
 ## Templates
 - Spec: `docs/templates/tech-spec.template.md`
