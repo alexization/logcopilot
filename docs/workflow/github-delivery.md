@@ -106,7 +106,9 @@ After PR is open:
    - reject with rationale
 3. Apply accepted fixes with follow-up commits.
 4. Reply on PR with what changed and why.
-5. Re-run checks and repeat until clear.
+5. If a correction comment was posted for broken content, delete the previous broken comment to keep one source of truth.
+   - Example: `gh api -X DELETE repos/<owner>/<repo>/issues/comments/<comment-id>`
+6. Re-run checks and repeat until clear.
 
 A work unit is not complete until this loop is finished.
 

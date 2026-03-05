@@ -39,7 +39,7 @@ check_sections() {
   local missing=()
   local section
   for section in "$@"; do
-    if ! printf '%s' "$text" | rg -F -- "$section" >/dev/null; then
+    if ! printf '%s\n' "$text" | rg -xF -- "$section" >/dev/null; then
       missing+=("$section")
     fi
   done
@@ -154,7 +154,7 @@ case "$profile" in
     ;;
   commit)
     first_line="$(printf '%s' "$text" | sed -n '1p')"
-    if ! printf '%s' "$first_line" | rg -q '^[a-z]+\([^)]+\): \[#([0-9]+)\] T-[0-9]+ .+'; then
+    if ! printf '%s' "$first_line" | rg -q '^[a-z]+\([^)]+\): \[#([0-9]+)\] T-[0-9]+[A-Za-z0-9]* .+'; then
       fail "커밋 제목 형식 불일치: $first_line"
     fi
     check_sections "$text" "Commit" \

@@ -50,6 +50,7 @@ Use this checklist before closing each task.
 - [ ] PR 제목/본문이 한국어로 작성되었다.
 - [ ] `./scripts/verify-delivery-text.sh pr <pr-number>` passed.
 - [ ] Issue/Commit/PR 본문에 깨진 문자(`�`) 또는 literal `\n` 노출이 없다.
+- [ ] 정정 코멘트를 남긴 경우, 이전 깨진 코멘트를 삭제했다.
 - [ ] coderabbitai/codex feedback reviewed and handled.
 - [ ] Follow-up commits were added for accepted review changes.
 - [ ] Commit 메시지가 한국어로 작성되었다.
