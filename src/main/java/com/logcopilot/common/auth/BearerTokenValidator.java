@@ -14,36 +14,22 @@ import java.util.Optional;
 @Component
 public class BearerTokenValidator {
 
-	private static final Map<String, TokenType> VERIFIED_TOKENS = Map.ofEntries(
-		Map.entry("ingest-token", TokenType.INGEST),
-		Map.entry("test-token", TokenType.API),
-		Map.entry("project-token", TokenType.API),
-		Map.entry("policy-token", TokenType.API),
-		Map.entry("incident-token", TokenType.API),
-		Map.entry("llm-token", TokenType.API),
-		Map.entry("alert-token", TokenType.API),
-		Map.entry("reader-token", TokenType.API),
-		Map.entry("actor-token-a", TokenType.API),
-		Map.entry("actor-token-b", TokenType.API),
-		Map.entry("api-token", TokenType.API),
-		Map.entry("token", TokenType.API)
-	);
-	private static final Map<String, TokenRole> VERIFIED_TOKEN_ROLES = Map.ofEntries(
-		Map.entry("ingest-token", TokenRole.INGEST),
-		Map.entry("test-token", TokenRole.OPERATOR),
-		Map.entry("project-token", TokenRole.API),
-		Map.entry("policy-token", TokenRole.API),
-		Map.entry("incident-token", TokenRole.API),
-		Map.entry("llm-token", TokenRole.API),
-		Map.entry("alert-token", TokenRole.API),
-		Map.entry("reader-token", TokenRole.API),
-		Map.entry("actor-token-a", TokenRole.API),
-		Map.entry("actor-token-b", TokenRole.API),
-		Map.entry("api-token", TokenRole.API),
-		Map.entry("token", TokenRole.API)
+	private static final Map<String, SeedToken> VERIFIED_TOKENS = Map.ofEntries(
+		Map.entry("ingest-token", new SeedToken(TokenType.INGEST, TokenRole.INGEST)),
+		Map.entry("test-token", new SeedToken(TokenType.API, TokenRole.OPERATOR)),
+		Map.entry("project-token", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("policy-token", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("incident-token", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("llm-token", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("alert-token", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("reader-token", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("actor-token-a", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("actor-token-b", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("api-token", new SeedToken(TokenType.API, TokenRole.API)),
+		Map.entry("token", new SeedToken(TokenType.API, TokenRole.API))
 	);
 	private static final Map<String, String> VERIFIED_TOKEN_TYPES = VERIFIED_TOKENS.entrySet().stream()
-		.collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().name()));
+		.collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().type().name()));
 
 	private final TokenHashStore tokenHashStore;
 
@@ -96,12 +82,11 @@ public class BearerTokenValidator {
 
 	private ValidatedToken resolveValidatedToken(String token) {
 		if (tokenHashStore == null) {
-			TokenType tokenType = VERIFIED_TOKENS.get(token);
-			TokenRole tokenRole = VERIFIED_TOKEN_ROLES.get(token);
-			if (tokenType == null || tokenRole == null) {
+			SeedToken seedToken = VERIFIED_TOKENS.get(token);
+			if (seedToken == null) {
 				return null;
 			}
-			return new ValidatedToken(token, tokenType, tokenRole);
+			return new ValidatedToken(token, seedToken.type(), seedToken.role());
 		}
 
 		Optional<TokenHashStore.TokenRecord> activeToken;
@@ -174,5 +159,11 @@ public class BearerTokenValidator {
 		OPERATOR,
 		API,
 		INGEST
+	}
+
+	private record SeedToken(
+		TokenType type,
+		TokenRole role
+	) {
 	}
 }

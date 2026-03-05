@@ -2,6 +2,7 @@ package com.logcopilot.bootstrap;
 
 import com.logcopilot.common.auth.TokenLifecycleService;
 import com.logcopilot.common.error.ConflictException;
+import com.logcopilot.common.error.ValidationException;
 import com.logcopilot.common.persistence.StateSnapshotRepository;
 import com.logcopilot.project.ProjectDto;
 import com.logcopilot.project.ProjectService;
@@ -55,17 +56,28 @@ public class BootstrapService {
 	}
 
 	public synchronized BootstrapInitialized initialize(InitializeCommand command) {
+		if (command == null) {
+			throw new ValidationException("Request body must not be null");
+		}
 		if (bootstrapped) {
 			throw new ConflictException("Bootstrap already completed");
 		}
-		ProjectDto project = projectService.create(command.projectName(), command.environment());
 
-		TokenLifecycleService.IssuedToken operator = tokenLifecycleService.issueToken(
-			new TokenLifecycleService.IssueCommand(command.operatorTokenName(), "operator")
-		);
-		TokenLifecycleService.IssuedToken ingest = tokenLifecycleService.issueToken(
-			new TokenLifecycleService.IssueCommand(command.ingestTokenName(), "ingest")
-		);
+		ProjectDto project = null;
+		TokenLifecycleService.IssuedToken operator = null;
+		TokenLifecycleService.IssuedToken ingest = null;
+		try {
+			project = projectService.create(command.projectName(), command.environment());
+			operator = tokenLifecycleService.issueToken(
+				new TokenLifecycleService.IssueCommand(command.operatorTokenName(), "operator")
+			);
+			ingest = tokenLifecycleService.issueToken(
+				new TokenLifecycleService.IssueCommand(command.ingestTokenName(), "ingest")
+			);
+		} catch (RuntimeException exception) {
+			rollbackPartialInitialization(project, operator, ingest, exception);
+			throw exception;
+		}
 
 		bootstrapped = true;
 		initializedAt = Instant.now().toString();
@@ -79,6 +91,34 @@ public class BootstrapService {
 			ingest.tokenInfo(),
 			ingest.plainToken()
 		);
+	}
+
+	private void rollbackPartialInitialization(
+		ProjectDto project,
+		TokenLifecycleService.IssuedToken operator,
+		TokenLifecycleService.IssuedToken ingest,
+		RuntimeException rootCause
+	) {
+		revokeIssuedToken(ingest, rootCause);
+		revokeIssuedToken(operator, rootCause);
+		if (project != null) {
+			try {
+				projectService.delete(project.id());
+			} catch (RuntimeException cleanupException) {
+				rootCause.addSuppressed(cleanupException);
+			}
+		}
+	}
+
+	private void revokeIssuedToken(TokenLifecycleService.IssuedToken issuedToken, RuntimeException rootCause) {
+		if (issuedToken == null || issuedToken.tokenInfo() == null) {
+			return;
+		}
+		try {
+			tokenLifecycleService.forceRevokeToken(issuedToken.tokenInfo().id(), "bootstrap-initialize-rollback");
+		} catch (RuntimeException cleanupException) {
+			rootCause.addSuppressed(cleanupException);
+		}
 	}
 
 	private void restoreState() {

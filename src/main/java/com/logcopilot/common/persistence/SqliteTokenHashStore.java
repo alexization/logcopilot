@@ -4,6 +4,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -17,7 +20,6 @@ import java.util.UUID;
 public class SqliteTokenHashStore implements TokenHashStore {
 
 	private static final String TABLE_NAME = "bearer_token_hashes";
-	private static final String LEGACY_TABLE_NAME = "bearer_token_hashes_legacy";
 	private static final String TABLE_SQL = """
 		create table if not exists bearer_token_hashes (
 			token_id text primary key,
@@ -59,6 +61,8 @@ public class SqliteTokenHashStore implements TokenHashStore {
 			return;
 		}
 
+		boolean hasOperator = countActiveTokensByRole("operator") > 0L;
+		String operatorCandidateId = hasOperator ? null : resolveOperatorCandidateTokenId(tokenTypeByPlainToken);
 		for (Map.Entry<String, String> entry : tokenTypeByPlainToken.entrySet()) {
 			String plainToken = normalize(entry.getKey());
 			String tokenType = normalizeTokenType(entry.getValue());
@@ -66,8 +70,11 @@ public class SqliteTokenHashStore implements TokenHashStore {
 				continue;
 			}
 
-			String tokenRole = defaultRoleForLegacyToken(plainToken, tokenType);
 			String tokenId = "legacy-" + hash(plainToken).substring(0, 16);
+			String tokenRole = defaultRoleForLegacyToken(tokenType, !hasOperator && tokenId.equals(operatorCandidateId));
+			if ("operator".equals(tokenRole)) {
+				hasOperator = true;
+			}
 			String now = Instant.now().toString();
 			jdbcTemplate.update(
 				"""
@@ -142,6 +149,15 @@ public class SqliteTokenHashStore implements TokenHashStore {
 	}
 
 	@Override
+	public Optional<TokenRecord> findTokenById(String tokenId) {
+		String normalizedTokenId = normalize(tokenId);
+		if (normalizedTokenId == null) {
+			return Optional.empty();
+		}
+		return readById(normalizedTokenId);
+	}
+
+	@Override
 	public TokenRecord issueToken(
 		String tokenId,
 		String plainToken,
@@ -206,6 +222,7 @@ public class SqliteTokenHashStore implements TokenHashStore {
 					revoked_at = null,
 					revocation_reason = null
 				where token_id = ?
+				  and status = 'active'
 			""",
 			hash(normalizedToken),
 			Instant.now().toString(),
@@ -350,38 +367,67 @@ public class SqliteTokenHashStore implements TokenHashStore {
 	}
 
 	private void migrateLegacyTable() {
-		jdbcTemplate.execute("drop table if exists " + LEGACY_TABLE_NAME);
-		jdbcTemplate.execute("alter table " + TABLE_NAME + " rename to " + LEGACY_TABLE_NAME);
-		jdbcTemplate.execute(TABLE_SQL);
-		jdbcTemplate.execute(
-			"""
-				insert into bearer_token_hashes(
-					token_id,
-					token_hash,
-					token_type,
-					token_role,
-					display_name,
-					status,
-					created_at,
-					rotated_at,
-					revoked_at,
-					revocation_reason
-				)
-				select
-					'legacy-' || substr(token_hash, 1, 16),
-					token_hash,
-					upper(token_type),
-					case when upper(token_type) = 'INGEST' then 'ingest' else 'api' end,
-					'legacy-' || case when upper(token_type) = 'INGEST' then 'ingest' else 'api' end,
-					'active',
-					coalesce(created_at, CURRENT_TIMESTAMP),
-					null,
-					null,
-					null
-				from bearer_token_hashes_legacy
-			"""
-		);
-		jdbcTemplate.execute("drop table " + LEGACY_TABLE_NAME);
+		String migrationLegacyTable = TABLE_NAME + "_legacy_" + System.nanoTime();
+		jdbcTemplate.execute((Connection connection) -> {
+			boolean previousAutoCommit = connection.getAutoCommit();
+			connection.setAutoCommit(false);
+			try (Statement statement = connection.createStatement()) {
+				statement.execute("alter table " + TABLE_NAME + " rename to " + migrationLegacyTable);
+				statement.execute(TABLE_SQL);
+				statement.execute(
+					"""
+						insert into bearer_token_hashes(
+							token_id,
+							token_hash,
+							token_type,
+							token_role,
+							display_name,
+							status,
+							created_at,
+							rotated_at,
+							revoked_at,
+							revocation_reason
+						)
+						select
+							'legacy-' || substr(token_hash, 1, 16),
+							token_hash,
+							upper(token_type),
+							case
+								when upper(token_type) = 'INGEST' then 'ingest'
+								when token_hash = (
+									select min(token_hash)
+									from %s
+									where upper(token_type) <> 'INGEST'
+								) then 'operator'
+								else 'api'
+							end,
+							'legacy-' || case
+								when upper(token_type) = 'INGEST' then 'ingest'
+								when token_hash = (
+									select min(token_hash)
+									from %s
+									where upper(token_type) <> 'INGEST'
+								) then 'operator'
+								else 'api'
+							end,
+							'active',
+							coalesce(created_at, CURRENT_TIMESTAMP),
+							null,
+							null,
+							null
+						from %s
+					""".formatted(migrationLegacyTable, migrationLegacyTable, migrationLegacyTable)
+				);
+				statement.execute("drop table " + migrationLegacyTable);
+				connection.commit();
+				return null;
+			} catch (SQLException exception) {
+				connection.rollback();
+				throw new IllegalStateException("Failed to migrate legacy token hash table", exception);
+			} finally {
+				connection.setAutoCommit(previousAutoCommit);
+			}
+		});
 	}
 
 	private String normalize(String value) {
@@ -416,11 +462,27 @@ public class SqliteTokenHashStore implements TokenHashStore {
 		return lower;
 	}
 
-	private String defaultRoleForLegacyToken(String plainToken, String tokenType) {
-		if ("test-token".equals(plainToken)) {
+	private String defaultRoleForLegacyToken(String tokenType, boolean promoteToOperator) {
+		if (promoteToOperator && !"INGEST".equals(tokenType)) {
 			return "operator";
 		}
 		return "INGEST".equals(tokenType) ? "ingest" : "api";
+	}
+
+	private String resolveOperatorCandidateTokenId(Map<String, String> tokenTypeByPlainToken) {
+		return tokenTypeByPlainToken.entrySet().stream()
+			.map(entry -> {
+				String plainToken = normalize(entry.getKey());
+				String tokenType = normalizeTokenType(entry.getValue());
+				if (plainToken == null || tokenType == null || "INGEST".equals(tokenType)) {
+					return null;
+				}
+				return "legacy-" + hash(plainToken).substring(0, 16);
+			})
+			.filter(value -> value != null)
+			.sorted()
+			.findFirst()
+			.orElse(null);
 	}
 
 	private String hash(String plainToken) {

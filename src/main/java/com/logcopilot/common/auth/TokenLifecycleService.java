@@ -93,11 +93,21 @@ public class TokenLifecycleService {
 		return toTokenInfo(revoked);
 	}
 
+	public synchronized void forceRevokeToken(String tokenId, String reason) {
+		String normalizedTokenId = normalizeRequired(tokenId, "token_id must not be blank");
+		tokenHashStore.revokeToken(normalizedTokenId, normalizeReason(reason));
+	}
+
 	private TokenHashStore.TokenRecord findTokenOrThrow(String tokenId) {
-		return tokenHashStore.listTokens().stream()
-			.filter(token -> tokenId.equals(token.id()))
-			.findFirst()
-			.orElseThrow(() -> new NotFoundException("Token not found"));
+		try {
+			return tokenHashStore.findTokenById(tokenId)
+				.orElseThrow(() -> new NotFoundException("Token not found"));
+		} catch (UnsupportedOperationException unsupportedOperationException) {
+			return tokenHashStore.listTokens().stream()
+				.filter(token -> tokenId.equals(token.id()))
+				.findFirst()
+				.orElseThrow(() -> new NotFoundException("Token not found"));
+		}
 	}
 
 	private TokenInfo toTokenInfo(TokenHashStore.TokenRecord record) {

@@ -175,6 +175,23 @@ class SqlitePersistenceTest {
 		}
 	}
 
+	@Test
+	void migratesLegacyApiTokensAndKeepsAtLeastOneOperatorRole() throws Exception {
+		Path dbPath = tempDir.resolve("logcopilot-legacy-api-token-schema.sqlite");
+		deleteIfExists(dbPath);
+		String encryptionSecret = "ephemeral-" + UUID.randomUUID();
+		String legacyApiToken = "legacy-api-token";
+
+		createLegacyTokenHashTable(dbPath, legacyApiToken, "API");
+
+		try (ConfigurableApplicationContext context = startContext(dbPath, encryptionSecret, false)) {
+			TokenHashStore tokenHashStore = context.getBean(TokenHashStore.class);
+			assertThat(tokenHashStore.findTokenType(legacyApiToken)).contains("API");
+			assertThat(tokenHashStore.listTokens())
+				.anyMatch(token -> "API".equals(token.tokenType()) && "operator".equals(token.tokenRole()));
+		}
+	}
+
 	private ConfigurableApplicationContext startContext(Path dbPath, String encryptionSecret) {
 		return startContext(dbPath, encryptionSecret, true);
 	}

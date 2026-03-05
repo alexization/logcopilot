@@ -41,7 +41,7 @@
 		token: "",
 		toastTimer: null,
 		bootstrapStatus: {
-			bootstrapped: true,
+			bootstrapped: false,
 			initialized_at: null
 		},
 		tokens: [],
@@ -96,6 +96,10 @@
 		try {
 			await refreshBootstrapStatus();
 		} catch (error) {
+			state.bootstrapStatus = {
+				bootstrapped: false,
+				initialized_at: null
+			};
 			setPreview({
 				status: "error",
 				message: "bootstrap 상태 조회 실패: " + errorMessage(error)
@@ -367,15 +371,15 @@
 			});
 		}
 
-		if (!hasToken) {
-			setSectionFeedback("API 토큰을 입력하면 시스템/프로젝트 데이터를 조회할 수 있습니다.", "info");
-			setPreview("API 조회를 위해 토큰을 먼저 설정해 주세요.");
-			return;
-		}
-
 		if (issueTokenForm) {
 			issueTokenForm.addEventListener("submit", async (event) => {
 				event.preventDefault();
+				if (!hasToken) {
+					setSectionFeedback("API 토큰을 입력하면 시스템/프로젝트 데이터를 조회할 수 있습니다.", "info");
+					setPreview("API 조회를 위해 토큰을 먼저 설정해 주세요.");
+					showToast("API 토큰을 먼저 설정해 주세요.");
+					return;
+				}
 				try {
 					requireToken();
 					const payload = {
@@ -391,6 +395,12 @@
 					handleSectionError("토큰 발급에 실패했습니다.", error);
 				}
 			});
+		}
+
+		if (!hasToken) {
+			setSectionFeedback("API 토큰을 입력하면 시스템/프로젝트 데이터를 조회할 수 있습니다.", "info");
+			setPreview("API 조회를 위해 토큰을 먼저 설정해 주세요.");
+			return;
 		}
 
 		if (refreshTokensButton) {
@@ -1292,13 +1302,21 @@
 	}
 
 	async function refreshBootstrapStatus() {
-		const response = await apiClient.getBootstrapStatus();
-		const data = response && response.data ? response.data : {};
-		state.bootstrapStatus = {
-			bootstrapped: Boolean(data.bootstrapped),
-			initialized_at: data.initialized_at || null
-		};
-		return response;
+		try {
+			const response = await apiClient.getBootstrapStatus();
+			const data = response && response.data ? response.data : {};
+			state.bootstrapStatus = {
+				bootstrapped: Boolean(data.bootstrapped),
+				initialized_at: data.initialized_at || null
+			};
+			return response;
+		} catch (error) {
+			state.bootstrapStatus = {
+				bootstrapped: false,
+				initialized_at: null
+			};
+			throw error;
+		}
 	}
 
 	async function refreshProjects() {

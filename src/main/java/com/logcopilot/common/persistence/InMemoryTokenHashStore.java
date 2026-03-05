@@ -24,14 +24,19 @@ public class InMemoryTokenHashStore implements TokenHashStore {
 			return;
 		}
 
+		boolean hasOperator = countActiveTokensByRole("operator") > 0L;
+		String operatorCandidateId = hasOperator ? null : resolveOperatorCandidateTokenId(tokenTypeByPlainToken);
 		for (Map.Entry<String, String> entry : tokenTypeByPlainToken.entrySet()) {
 			String plainToken = normalize(entry.getKey());
 			String tokenType = normalizeTokenType(entry.getValue());
 			if (plainToken == null || tokenType == null) {
 				continue;
 			}
-			String tokenRole = defaultRoleForLegacyToken(plainToken, tokenType);
 			String tokenId = "legacy-" + hash(plainToken).substring(0, 16);
+			String tokenRole = defaultRoleForLegacyToken(tokenType, !hasOperator && tokenId.equals(operatorCandidateId));
+			if ("operator".equals(tokenRole)) {
+				hasOperator = true;
+			}
 			issueToken(tokenId, plainToken, tokenType, tokenRole, "legacy-" + tokenRole);
 		}
 	}
@@ -73,6 +78,19 @@ public class InMemoryTokenHashStore implements TokenHashStore {
 	}
 
 	@Override
+	public synchronized Optional<TokenRecord> findTokenById(String tokenId) {
+		String normalizedTokenId = normalize(tokenId);
+		if (normalizedTokenId == null) {
+			return Optional.empty();
+		}
+		TokenState tokenState = tokensById.get(normalizedTokenId);
+		if (tokenState == null) {
+			return Optional.empty();
+		}
+		return Optional.of(toRecord(tokenState));
+	}
+
+	@Override
 	public synchronized TokenRecord issueToken(
 		String tokenId,
 		String plainToken,
@@ -92,15 +110,20 @@ public class InMemoryTokenHashStore implements TokenHashStore {
 			throw new IllegalArgumentException("token metadata must not be blank");
 		}
 
+		String hashed = hash(normalizedToken);
+		String existingTokenId = tokenIdByHash.get(hashed);
+		if (existingTokenId != null && !existingTokenId.equals(normalizedTokenId)) {
+			throw new IllegalArgumentException("token hash already exists");
+		}
 		TokenState previous = tokensById.get(normalizedTokenId);
-		if (previous != null) {
+		if (previous != null && !previous.tokenHash().equals(hashed)) {
 			tokenIdByHash.remove(previous.tokenHash());
 		}
 
 		String now = Instant.now().toString();
 		TokenState tokenState = new TokenState(
 			normalizedTokenId,
-			hash(normalizedToken),
+			hashed,
 			normalizedType,
 			normalizedRole,
 			normalizedDisplayName,
@@ -126,11 +149,21 @@ public class InMemoryTokenHashStore implements TokenHashStore {
 		if (previous == null) {
 			return Optional.empty();
 		}
+		if (!"active".equals(previous.status())) {
+			return Optional.empty();
+		}
 
-		tokenIdByHash.remove(previous.tokenHash());
+		String hashed = hash(normalizedToken);
+		String existingTokenId = tokenIdByHash.get(hashed);
+		if (existingTokenId != null && !existingTokenId.equals(normalizedTokenId)) {
+			throw new IllegalArgumentException("token hash already exists");
+		}
+		if (!previous.tokenHash().equals(hashed)) {
+			tokenIdByHash.remove(previous.tokenHash());
+		}
 		TokenState updated = new TokenState(
 			previous.tokenId(),
-			hash(normalizedToken),
+			hashed,
 			previous.tokenType(),
 			previous.tokenRole(),
 			previous.displayName(),
@@ -252,11 +285,27 @@ public class InMemoryTokenHashStore implements TokenHashStore {
 		return lower;
 	}
 
-	private String defaultRoleForLegacyToken(String plainToken, String tokenType) {
-		if ("test-token".equals(plainToken)) {
+	private String defaultRoleForLegacyToken(String tokenType, boolean promoteToOperator) {
+		if (promoteToOperator && !"INGEST".equals(tokenType)) {
 			return "operator";
 		}
 		return "INGEST".equals(tokenType) ? "ingest" : "api";
+	}
+
+	private String resolveOperatorCandidateTokenId(Map<String, String> tokenTypeByPlainToken) {
+		return tokenTypeByPlainToken.entrySet().stream()
+			.map(entry -> {
+				String plainToken = normalize(entry.getKey());
+				String tokenType = normalizeTokenType(entry.getValue());
+				if (plainToken == null || tokenType == null || "INGEST".equals(tokenType)) {
+					return null;
+				}
+				return "legacy-" + hash(plainToken).substring(0, 16);
+			})
+			.filter(value -> value != null)
+			.sorted()
+			.findFirst()
+			.orElse(null);
 	}
 
 	private String hash(String plainToken) {
