@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -52,6 +53,85 @@ class LokiConnectorEndpointsContractTest {
 			.andExpect(jsonPath("$.data.type").value("loki"))
 			.andExpect(jsonPath("$.data.status").value("active"))
 			.andExpect(jsonPath("$.data.updated_at").isString());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/connectors/loki 는 현재 설정을 반환한다")
+	void getLokiConnectorReturnsCurrentConfiguration() throws Exception {
+		String projectId = createProjectId("loki-get-configured");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(lokiConnectorRequestBody(
+					"https://loki.example.com",
+					"basic",
+					null,
+					"reader",
+					"reader-secret",
+					"{service=\"api\"}",
+					45
+				)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(true))
+			.andExpect(jsonPath("$.data.type").value("loki"))
+			.andExpect(jsonPath("$.data.status").value("active"))
+			.andExpect(jsonPath("$.data.endpoint").value("https://loki.example.com"))
+			.andExpect(jsonPath("$.data.tenant_id").isEmpty())
+			.andExpect(jsonPath("$.data.auth.type").value("basic"))
+			.andExpect(jsonPath("$.data.auth.token").isEmpty())
+			.andExpect(jsonPath("$.data.auth.token_configured").value(false))
+			.andExpect(jsonPath("$.data.auth.username").value("reader"))
+			.andExpect(jsonPath("$.data.auth.password").isEmpty())
+			.andExpect(jsonPath("$.data.auth.password_configured").value(true))
+			.andExpect(jsonPath("$.data.query").value("{service=\"api\"}"))
+			.andExpect(jsonPath("$.data.poll_interval_seconds").value(45))
+			.andExpect(jsonPath("$.data.updated_at").isString());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/connectors/loki 는 미설정 프로젝트에서 configured=false를 반환한다")
+	void getLokiConnectorReturnsUnconfiguredWhenMissing() throws Exception {
+		String projectId = createProjectId("loki-get-empty");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(false))
+			.andExpect(jsonPath("$.data.type").value("loki"))
+			.andExpect(jsonPath("$.data.status").value("not_configured"))
+			.andExpect(jsonPath("$.data.endpoint").isEmpty())
+			.andExpect(jsonPath("$.data.auth.type").value("none"))
+			.andExpect(jsonPath("$.data.auth.token_configured").value(false))
+			.andExpect(jsonPath("$.data.auth.password_configured").value(false))
+			.andExpect(jsonPath("$.data.query").isEmpty())
+			.andExpect(jsonPath("$.data.poll_interval_seconds").isEmpty())
+			.andExpect(jsonPath("$.data.updated_at").isEmpty());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/connectors/loki 는 인증 누락 시 401을 반환한다")
+	void getLokiConnectorRejectsMissingBearerToken() throws Exception {
+		String projectId = createProjectId("loki-get-auth");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/connectors/loki", projectId))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/connectors/loki 는 프로젝트가 없으면 404를 반환한다")
+	void getLokiConnectorReturns404WhenProjectMissing() throws Exception {
+		mockMvc.perform(get("/v1/projects/{project_id}/connectors/loki", "missing-project")
+				.header("Authorization", "Bearer test-token"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.error.code").value("not_found"))
+			.andExpect(jsonPath("$.error.message").value("Project not found"));
 	}
 
 	@Test
@@ -218,6 +298,105 @@ class LokiConnectorEndpointsContractTest {
 			.andExpect(status().isBadGateway())
 			.andExpect(jsonPath("$.error.code").value("bad_gateway"))
 			.andExpect(jsonPath("$.error.message").value("Failed to reach Loki upstream"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/connectors/loki/test 는 커넥터 미설정이면 404를 반환한다")
+	void testLokiConnectorReturns404WhenConnectorMissing() throws Exception {
+		String projectId = createProjectId("loki-test-connector-missing");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/connectors/loki/test", projectId)
+				.header("Authorization", "Bearer test-token"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.error.code").value("not_found"))
+			.andExpect(jsonPath("$.error.message").value("Loki connector not found"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/connectors/loki 는 기존 secret을 유지한 채 갱신할 수 있다")
+	void upsertLokiConnectorKeepsExistingSecretWhenInputBlank() throws Exception {
+		String projectId = createProjectId("loki-secret-preserve");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(lokiConnectorRequestBody(
+					"https://loki.example.com",
+					"bearer",
+					"token-initial",
+					null,
+					null,
+					"{service=\"api\"}",
+					30
+				)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(lokiConnectorRequestBody(
+					"https://loki.example.com",
+					"bearer",
+					"",
+					null,
+					null,
+					"{service=\"worker\"}",
+					60
+				)))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.query").value("{service=\"worker\"}"))
+			.andExpect(jsonPath("$.data.poll_interval_seconds").value(60))
+			.andExpect(jsonPath("$.data.auth.type").value("bearer"))
+			.andExpect(jsonPath("$.data.auth.token").isEmpty())
+			.andExpect(jsonPath("$.data.auth.token_configured").value(true));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/connectors/loki 는 basic 인증정보를 공란 갱신 시 기존값으로 유지한다")
+	void upsertLokiConnectorKeepsExistingBasicCredentialsWhenInputBlank() throws Exception {
+		String projectId = createProjectId("loki-basic-preserve");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(lokiConnectorRequestBody(
+					"https://loki.example.com",
+					"basic",
+					null,
+					"reader",
+					"reader-secret",
+					"{service=\"api\"}",
+					30
+				)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(lokiConnectorRequestBody(
+					"https://loki.example.com",
+					"basic",
+					null,
+					"",
+					"",
+					"{service=\"worker\"}",
+					60
+				)))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/connectors/loki", projectId)
+				.header("Authorization", "Bearer test-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.query").value("{service=\"worker\"}"))
+			.andExpect(jsonPath("$.data.poll_interval_seconds").value(60))
+			.andExpect(jsonPath("$.data.auth.type").value("basic"))
+			.andExpect(jsonPath("$.data.auth.username").value("reader"))
+			.andExpect(jsonPath("$.data.auth.password").isEmpty())
+			.andExpect(jsonPath("$.data.auth.password_configured").value(true));
 	}
 
 	private String createProjectId(String namePrefix) throws Exception {

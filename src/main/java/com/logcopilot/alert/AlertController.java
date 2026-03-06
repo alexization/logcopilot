@@ -10,7 +10,6 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +36,46 @@ public class AlertController {
 
 	public AlertController(AlertService alertService) {
 		this.alertService = alertService;
+	}
+
+	@GetMapping("/alerts/slack")
+	public SlackAlertConfigResponse getSlackConfiguration(@PathVariable("project_id") String projectId) {
+		AlertService.SlackChannelView channel = alertService.getSlackChannel(projectId);
+		return new SlackAlertConfigResponse(new SlackAlertConfigData(
+			channel.configured(),
+			channel.id(),
+			channel.type(),
+			channel.enabled(),
+			channel.webhookUrl(),
+			channel.channel(),
+			channel.webhookConfigured(),
+			channel.minConfidence(),
+			channel.updatedAt()
+		));
+	}
+
+	@GetMapping("/alerts/email")
+	public EmailAlertConfigResponse getEmailConfiguration(@PathVariable("project_id") String projectId) {
+		AlertService.EmailChannelView channel = alertService.getEmailChannel(projectId);
+		AlertService.SmtpView smtp = channel.smtp();
+		return new EmailAlertConfigResponse(new EmailAlertConfigData(
+			channel.configured(),
+			channel.id(),
+			channel.type(),
+			channel.enabled(),
+			channel.from(),
+			channel.recipients(),
+			new SmtpConfigData(
+				smtp == null ? null : smtp.host(),
+				smtp == null ? null : smtp.port(),
+				smtp == null ? null : smtp.username(),
+				smtp == null ? null : smtp.password(),
+				smtp != null && smtp.passwordConfigured(),
+				smtp == null || smtp.starttls()
+			),
+			channel.minConfidence(),
+			channel.updatedAt()
+		));
 	}
 
 	@PostMapping("/alerts/slack")
@@ -126,8 +165,6 @@ public class AlertController {
 	}
 
 	public record SlackAlertRequest(
-		@NotBlank(message = "webhook_url must be a valid URI")
-		@Pattern(regexp = "https?://.+", message = "webhook_url must be a valid URI")
 		@JsonProperty("webhook_url")
 		String webhookUrl,
 		@NotBlank(message = "channel must not be blank")
@@ -165,13 +202,61 @@ public class AlertController {
 		Integer port,
 		@NotBlank(message = "smtp.username must not be blank")
 		String username,
-		@NotBlank(message = "smtp.password must not be blank")
 		String password,
 		Boolean starttls
 	) {
 	}
 
 	public record AlertChannelResponse(AlertChannelData data) {
+	}
+
+	public record SlackAlertConfigResponse(SlackAlertConfigData data) {
+	}
+
+	public record SlackAlertConfigData(
+		boolean configured,
+		String id,
+		String type,
+		boolean enabled,
+		@JsonProperty("webhook_url")
+		String webhookUrl,
+		String channel,
+		@JsonProperty("webhook_configured")
+		boolean webhookConfigured,
+		@JsonProperty("min_confidence")
+		double minConfidence,
+		@JsonProperty("updated_at")
+		Instant updatedAt
+	) {
+	}
+
+	public record EmailAlertConfigResponse(EmailAlertConfigData data) {
+	}
+
+	public record EmailAlertConfigData(
+		boolean configured,
+		String id,
+		String type,
+		boolean enabled,
+		String from,
+		List<String> recipients,
+		SmtpConfigData smtp,
+		@JsonProperty("min_confidence")
+		double minConfidence,
+		@JsonProperty("updated_at")
+		Instant updatedAt
+	) {
+	}
+
+	public record SmtpConfigData(
+		String host,
+		Integer port,
+		String username,
+		String password,
+		@JsonProperty("password_configured")
+		Boolean passwordConfigured,
+		Boolean starttls
+	) {
 	}
 
 	public record AlertChannelData(

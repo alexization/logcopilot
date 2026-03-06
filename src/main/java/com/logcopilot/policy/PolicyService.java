@@ -23,6 +23,8 @@ public class PolicyService {
 	private static final String SNAPSHOT_SCOPE = "policy-service";
 	private static final int MAX_REDACTION_RULES = 200;
 	private static final int MAX_REGEX_PATTERN_LENGTH = 512;
+	private static final String DEFAULT_EXPORT_LEVEL = "level1_byom_only";
+	private static final boolean DEFAULT_REDACTION_ENABLED = true;
 	private static final Pattern NESTED_QUANTIFIER_PATTERN =
 		Pattern.compile(
 			"\\((?:[^()\\\\]|\\\\.)*(?:[+*?]|\\{\\d+(?:,\\d*)?\\})(?:[^()\\\\]|\\\\.)*\\)(?:[+*?]|\\{\\d+(?:,\\d*)?\\})"
@@ -112,6 +114,32 @@ public class PolicyService {
 			throw new IllegalStateException("Redaction did not mask all sensitive values");
 		}
 		return redacted;
+	}
+
+	public synchronized ExportPolicyView getExportPolicy(String projectId) {
+		requireProject(projectId);
+		ExportPolicyState configured = exportPolicyByProject.get(projectId);
+		if (configured == null) {
+			return new ExportPolicyView(false, DEFAULT_EXPORT_LEVEL, null);
+		}
+		return new ExportPolicyView(true, configured.level(), configured.updatedAt());
+	}
+
+	public synchronized RedactionPolicyView getRedactionPolicy(String projectId) {
+		requireProject(projectId);
+		RedactionPolicyState configured = redactionPolicyByProject.get(projectId);
+		if (configured == null) {
+			return new RedactionPolicyView(false, DEFAULT_REDACTION_ENABLED, List.of(), null);
+		}
+		List<RedactionRuleView> rules = configured.rules().stream()
+			.map(rule -> new RedactionRuleView(rule.name(), rule.pattern(), rule.replaceWith()))
+			.toList();
+		return new RedactionPolicyView(
+			true,
+			configured.enabled(),
+			rules,
+			configured.updatedAt()
+		);
 	}
 
 	private void requireProject(String projectId) {
@@ -231,6 +259,28 @@ public class PolicyService {
 		boolean enabled,
 		int rulesCount,
 		Instant updatedAt
+	) {
+	}
+
+	public record ExportPolicyView(
+		boolean configured,
+		String level,
+		Instant updatedAt
+	) {
+	}
+
+	public record RedactionPolicyView(
+		boolean configured,
+		boolean enabled,
+		List<RedactionRuleView> rules,
+		Instant updatedAt
+	) {
+	}
+
+	public record RedactionRuleView(
+		String name,
+		String pattern,
+		String replaceWith
 	) {
 	}
 

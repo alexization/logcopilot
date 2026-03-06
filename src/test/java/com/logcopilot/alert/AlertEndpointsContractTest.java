@@ -72,6 +72,69 @@ class AlertEndpointsContractTest {
 	}
 
 	@Test
+	@DisplayName("GET /v1/projects/{project_id}/alerts/slack 는 현재 Slack 설정을 반환한다")
+	void getSlackAlertReturnsCurrentConfiguration() throws Exception {
+		String projectId = createProjectId("alert-slack-get");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(slackRequestBody("https://hooks.slack.com/services/T000/B000/GET", "#platform", 0.82)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(true))
+			.andExpect(jsonPath("$.data.type").value("slack"))
+			.andExpect(jsonPath("$.data.enabled").value(true))
+			.andExpect(jsonPath("$.data.webhook_url").isEmpty())
+			.andExpect(jsonPath("$.data.webhook_configured").value(true))
+			.andExpect(jsonPath("$.data.channel").value("#platform"))
+			.andExpect(jsonPath("$.data.min_confidence").value(0.82))
+			.andExpect(jsonPath("$.data.updated_at").isString());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/alerts/slack 는 미설정 시 configured=false를 반환한다")
+	void getSlackAlertReturnsUnconfiguredWhenMissing() throws Exception {
+		String projectId = createProjectId("alert-slack-get-default");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(false))
+			.andExpect(jsonPath("$.data.type").value("slack"))
+			.andExpect(jsonPath("$.data.enabled").value(false))
+			.andExpect(jsonPath("$.data.webhook_url").isEmpty())
+			.andExpect(jsonPath("$.data.webhook_configured").value(false))
+			.andExpect(jsonPath("$.data.channel").isEmpty())
+			.andExpect(jsonPath("$.data.min_confidence").value(0.45))
+			.andExpect(jsonPath("$.data.updated_at").isEmpty());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/alerts/slack 는 인증 누락 시 401을 반환한다")
+	void getSlackAlertRejectsMissingBearerToken() throws Exception {
+		String projectId = createProjectId("alert-slack-get-auth");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/slack", projectId))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/alerts/slack 는 프로젝트가 없으면 404를 반환한다")
+	void getSlackAlertReturns404WhenProjectMissing() throws Exception {
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/slack", "missing-project")
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.error.code").value("not_found"))
+			.andExpect(jsonPath("$.error.message").value("Project not found"));
+	}
+
+	@Test
 	@DisplayName("POST /v1/projects/{project_id}/alerts/slack 는 인증 누락 시 401을 반환한다")
 	void configureSlackRejectsMissingBearerToken() throws Exception {
 		String projectId = createProjectId("alert-slack-auth");
@@ -178,6 +241,321 @@ class AlertEndpointsContractTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.id").value(channelId))
 			.andExpect(jsonPath("$.data.type").value("email"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/alerts/email 는 현재 Email 설정을 반환한다")
+	void getEmailAlertReturnsCurrentConfiguration() throws Exception {
+		String projectId = createProjectId("alert-email-get");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(emailRequestBody(
+					"alerts@example.com",
+					"\"ops@example.com\",\"sre@example.com\"",
+					"smtp.example.com",
+					465,
+					"smtp-reader",
+					"smtp-secret-get",
+					false,
+					0.91
+				)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(true))
+			.andExpect(jsonPath("$.data.type").value("email"))
+			.andExpect(jsonPath("$.data.enabled").value(true))
+			.andExpect(jsonPath("$.data.from").value("alerts@example.com"))
+			.andExpect(jsonPath("$.data.recipients[0]").value("ops@example.com"))
+			.andExpect(jsonPath("$.data.recipients[1]").value("sre@example.com"))
+			.andExpect(jsonPath("$.data.smtp.host").value("smtp.example.com"))
+			.andExpect(jsonPath("$.data.smtp.port").value(465))
+			.andExpect(jsonPath("$.data.smtp.username").value("smtp-reader"))
+			.andExpect(jsonPath("$.data.smtp.password").isEmpty())
+			.andExpect(jsonPath("$.data.smtp.password_configured").value(true))
+			.andExpect(jsonPath("$.data.smtp.starttls").value(false))
+			.andExpect(jsonPath("$.data.min_confidence").value(0.91))
+			.andExpect(jsonPath("$.data.updated_at").isString());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/alerts/email 는 미설정 시 configured=false를 반환한다")
+	void getEmailAlertReturnsUnconfiguredWhenMissing() throws Exception {
+		String projectId = createProjectId("alert-email-get-default");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(false))
+			.andExpect(jsonPath("$.data.type").value("email"))
+			.andExpect(jsonPath("$.data.enabled").value(false))
+			.andExpect(jsonPath("$.data.from").isEmpty())
+			.andExpect(jsonPath("$.data.recipients").isArray())
+			.andExpect(jsonPath("$.data.recipients.length()").value(0))
+			.andExpect(jsonPath("$.data.smtp.host").isEmpty())
+			.andExpect(jsonPath("$.data.smtp.port").isEmpty())
+			.andExpect(jsonPath("$.data.smtp.username").isEmpty())
+			.andExpect(jsonPath("$.data.smtp.password").isEmpty())
+			.andExpect(jsonPath("$.data.smtp.password_configured").value(false))
+			.andExpect(jsonPath("$.data.smtp.starttls").value(true))
+			.andExpect(jsonPath("$.data.min_confidence").value(0.45))
+			.andExpect(jsonPath("$.data.updated_at").isEmpty());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/alerts/email 는 인증 누락 시 401을 반환한다")
+	void getEmailAlertRejectsMissingBearerToken() throws Exception {
+		String projectId = createProjectId("alert-email-get-auth");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/email", projectId))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/alerts/email 는 프로젝트가 없으면 404를 반환한다")
+	void getEmailAlertReturns404WhenProjectMissing() throws Exception {
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/email", "missing-project")
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.error.code").value("not_found"))
+			.andExpect(jsonPath("$.error.message").value("Project not found"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/alerts/slack 는 webhook 공백 시 기존 secret을 유지한다")
+	void configureSlackKeepsExistingWebhookWhenBlank() throws Exception {
+		String projectId = createProjectId("alert-slack-preserve-webhook");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(slackRequestBody("https://hooks.slack.com/services/T000/B000/INIT", "#ops", 0.45)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "webhook_url": "",
+					  "channel": "#platform",
+					  "min_confidence": 0.71
+					}
+					"""))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.channel").value("#platform"))
+			.andExpect(jsonPath("$.data.min_confidence").value(0.71))
+			.andExpect(jsonPath("$.data.webhook_url").isEmpty())
+			.andExpect(jsonPath("$.data.webhook_configured").value(true));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/alerts/slack 는 webhook null/생략 시 기존 secret을 유지한다")
+	void configureSlackKeepsExistingWebhookWhenNullOrOmitted() throws Exception {
+		String projectId = createProjectId("alert-slack-preserve-null-omitted");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(slackRequestBody("https://hooks.slack.com/services/T000/B000/BASE", "#ops", 0.45)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "webhook_url": null,
+					  "channel": "#platform",
+					  "min_confidence": 0.72
+					}
+					"""))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "channel": "#platform-2",
+					  "min_confidence": 0.74
+					}
+					"""))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.channel").value("#platform-2"))
+			.andExpect(jsonPath("$.data.webhook_configured").value(true));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/alerts/slack 는 최초 생성에서 webhook 누락 시 422를 반환한다")
+	void configureSlackReturns422WhenWebhookMissingOnCreate() throws Exception {
+		String projectId = createProjectId("alert-slack-create-missing-webhook");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/slack", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "channel": "#ops",
+					  "min_confidence": 0.45
+					}
+					"""))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("webhook_url must be a valid URI"));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/alerts/email 는 smtp.password 공백 시 기존 secret을 유지한다")
+	void configureEmailKeepsExistingPasswordWhenBlank() throws Exception {
+		String projectId = createProjectId("alert-email-preserve-password");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(emailRequestBody(
+					"alerts@example.com",
+					"\"ops@example.com\"",
+					"smtp.example.com",
+					587,
+					"smtp-user",
+					"smtp-secret-init",
+					true,
+					0.6
+				)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "from": "alerts@example.com",
+					  "recipients": ["platform@example.com"],
+					  "smtp": {
+					    "host": "smtp.example.com",
+					    "port": 587,
+					    "username": "smtp-user",
+					    "password": "",
+					    "starttls": true
+					  },
+					  "min_confidence": 0.74
+					}
+					"""))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.recipients[0]").value("platform@example.com"))
+			.andExpect(jsonPath("$.data.min_confidence").value(0.74))
+			.andExpect(jsonPath("$.data.smtp.password").isEmpty())
+			.andExpect(jsonPath("$.data.smtp.password_configured").value(true));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/alerts/email 는 smtp.password null/생략 시 기존 secret을 유지한다")
+	void configureEmailKeepsExistingPasswordWhenNullOrOmitted() throws Exception {
+		String projectId = createProjectId("alert-email-preserve-null-omitted");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(emailRequestBody(
+					"alerts@example.com",
+					"\"ops@example.com\"",
+					"smtp.example.com",
+					587,
+					"smtp-user",
+					"smtp-secret-init",
+					true,
+					0.6
+				)))
+			.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "from": "alerts@example.com",
+					  "recipients": ["platform@example.com"],
+					  "smtp": {
+					    "host": "smtp.example.com",
+					    "port": 587,
+					    "username": "smtp-user",
+					    "password": null,
+					    "starttls": true
+					  },
+					  "min_confidence": 0.73
+					}
+					"""))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "from": "alerts@example.com",
+					  "recipients": ["platform2@example.com"],
+					  "smtp": {
+					    "host": "smtp.example.com",
+					    "port": 587,
+					    "username": "smtp-user",
+					    "starttls": true
+					  },
+					  "min_confidence": 0.75
+					}
+					"""))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.recipients[0]").value("platform2@example.com"))
+			.andExpect(jsonPath("$.data.smtp.password").isEmpty())
+			.andExpect(jsonPath("$.data.smtp.password_configured").value(true));
+	}
+
+	@Test
+	@DisplayName("POST /v1/projects/{project_id}/alerts/email 는 최초 생성에서 smtp.password 누락 시 422를 반환한다")
+	void configureEmailReturns422WhenPasswordMissingOnCreate() throws Exception {
+		String projectId = createProjectId("alert-email-create-missing-password");
+
+		mockMvc.perform(post("/v1/projects/{project_id}/alerts/email", projectId)
+				.header("Authorization", "Bearer alert-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "from": "alerts@example.com",
+					  "recipients": ["ops@example.com"],
+					  "smtp": {
+					    "host": "smtp.example.com",
+					    "port": 587,
+					    "username": "smtp-user",
+					    "starttls": true
+					  },
+					  "min_confidence": 0.6
+					}
+					"""))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("smtp.password must not be blank"));
 	}
 
 	@Test
@@ -302,6 +680,32 @@ class AlertEndpointsContractTest {
 			.andExpect(status().isUnprocessableEntity())
 			.andExpect(jsonPath("$.error.code").value("validation_error"))
 			.andExpect(jsonPath("$.error.message").value("limit must be between 1 and 200"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/audit-logs 는 cursor가 음수면 422를 반환한다")
+	void listAuditLogsReturns422WhenCursorNegative() throws Exception {
+		String projectId = createProjectId("audit-log-cursor-negative");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/audit-logs", projectId)
+				.header("Authorization", "Bearer reader-token")
+				.queryParam("cursor", "-1"))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("cursor must be a non-negative integer"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/audit-logs 는 cursor가 숫자가 아니면 422를 반환한다")
+	void listAuditLogsReturns422WhenCursorInvalid() throws Exception {
+		String projectId = createProjectId("audit-log-cursor-invalid");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/audit-logs", projectId)
+				.header("Authorization", "Bearer reader-token")
+				.queryParam("cursor", "abc"))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.error.code").value("validation_error"))
+			.andExpect(jsonPath("$.error.message").value("cursor must be a non-negative integer"));
 	}
 
 	private String createProjectId(String namePrefix) throws Exception {

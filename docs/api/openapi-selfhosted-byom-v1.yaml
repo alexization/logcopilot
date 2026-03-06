@@ -253,6 +253,25 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   /v1/projects/{project_id}/connectors/loki:
+    get:
+      tags: [Connectors]
+      summary: Get current Loki connector configuration
+      operationId: getLokiConnector
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Connector configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LokiConnectorConfigurationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
     post:
       tags: [Connectors]
       summary: Create or update Loki pull connector
@@ -452,6 +471,25 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   /v1/projects/{project_id}/policies/export:
+    get:
+      tags: [Policies]
+      summary: Get export policy
+      operationId: getExportPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Current export policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportPolicyDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
     put:
       tags: [Policies]
       summary: Update export policy
@@ -479,6 +517,25 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   /v1/projects/{project_id}/policies/redaction:
+    get:
+      tags: [Policies]
+      summary: Get redaction policy
+      operationId: getRedactionPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Current redaction policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedactionPolicyDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
     put:
       tags: [Policies]
       summary: Update masking/redaction rules
@@ -658,6 +715,25 @@ paths:
           $ref: '#/components/responses/Conflict'
 
   /v1/projects/{project_id}/alerts/slack:
+    get:
+      tags: [Alerts]
+      summary: Get Slack alert channel configuration
+      operationId: getSlackConfiguration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Slack configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackAlertConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
     post:
       tags: [Alerts]
       summary: Configure Slack alert channel
@@ -691,6 +767,25 @@ paths:
           $ref: '#/components/responses/ValidationError'
 
   /v1/projects/{project_id}/alerts/email:
+    get:
+      tags: [Alerts]
+      summary: Get Email alert channel configuration
+      operationId: getEmailConfiguration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Email configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailAlertConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
     post:
       tags: [Alerts]
       summary: Configure Email alert channel
@@ -751,6 +846,8 @@ paths:
                 $ref: '#/components/schemas/AuditLogListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1187,6 +1284,68 @@ components:
           required: [id, type, status, updated_at]
       required: [data]
 
+    LokiConnectorConfigurationResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            configured:
+              type: boolean
+            id:
+              type: string
+              nullable: true
+            type:
+              type: string
+              enum: [loki]
+            status:
+              type: string
+              enum: [active, not_configured]
+            endpoint:
+              type: string
+              format: uri
+              nullable: true
+            tenant_id:
+              type: string
+              nullable: true
+            auth:
+              $ref: '#/components/schemas/LokiConnectorAuthConfig'
+            query:
+              type: string
+              nullable: true
+            poll_interval_seconds:
+              type: integer
+              minimum: 5
+              maximum: 300
+              nullable: true
+            updated_at:
+              type: string
+              format: date-time
+              nullable: true
+          required: [configured, type, status, auth]
+      required: [data]
+
+    LokiConnectorAuthConfig:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [none, bearer, basic]
+        token:
+          type: string
+          nullable: true
+        username:
+          type: string
+          nullable: true
+        password:
+          type: string
+          nullable: true
+        token_configured:
+          type: boolean
+        password_configured:
+          type: boolean
+      required: [type, token_configured, password_configured]
+
     LokiTestResponse:
       type: object
       properties:
@@ -1311,6 +1470,24 @@ components:
           required: [level, updated_at]
       required: [data]
 
+    ExportPolicyDetailResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            configured:
+              type: boolean
+            level:
+              type: string
+              enum: [level0_rule_only, level1_byom_only, level2_byom_with_telemetry]
+            updated_at:
+              type: string
+              format: date-time
+              nullable: true
+          required: [configured, level]
+      required: [data]
+
     RedactionRule:
       type: object
       properties:
@@ -1348,6 +1525,29 @@ components:
               type: string
               format: date-time
           required: [enabled, rules_count, updated_at]
+      required: [data]
+
+    RedactionPolicyDetailResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            configured:
+              type: boolean
+            enabled:
+              type: boolean
+            rules_count:
+              type: integer
+            rules:
+              type: array
+              items:
+                $ref: '#/components/schemas/RedactionRule'
+            updated_at:
+              type: string
+              format: date-time
+              nullable: true
+          required: [configured, enabled, rules_count, rules]
       required: [data]
 
     CanonicalLogEvent:
@@ -1526,8 +1726,13 @@ components:
       type: object
       properties:
         webhook_url:
-          type: string
-          format: uri
+          oneOf:
+            - type: string
+              format: uri
+            - type: string
+              maxLength: 0
+              description: Empty string keeps previously stored webhook secret when already configured.
+          nullable: true
         channel:
           type: string
         min_confidence:
@@ -1535,7 +1740,7 @@ components:
           minimum: 0
           maximum: 1
           default: 0.45
-      required: [webhook_url, channel]
+      required: [channel]
 
     EmailAlertRequest:
       type: object
@@ -1559,11 +1764,16 @@ components:
             username:
               type: string
             password:
-              type: string
+              oneOf:
+                - type: string
+                - type: string
+                  maxLength: 0
+                  description: Empty string keeps previously stored SMTP password when already configured.
+              nullable: true
             starttls:
               type: boolean
               default: true
-          required: [host, port, username, password]
+          required: [host, port, username]
         min_confidence:
           type: number
           minimum: 0
@@ -1589,6 +1799,101 @@ components:
               format: date-time
           required: [id, type, enabled, updated_at]
       required: [data]
+
+    SlackAlertConfigResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            configured:
+              type: boolean
+            id:
+              type: string
+              nullable: true
+            type:
+              type: string
+              enum: [slack]
+            enabled:
+              type: boolean
+            webhook_url:
+              type: string
+              format: uri
+              nullable: true
+            channel:
+              type: string
+              nullable: true
+            webhook_configured:
+              type: boolean
+            min_confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+            updated_at:
+              type: string
+              format: date-time
+              nullable: true
+          required: [configured, type, enabled, webhook_configured, min_confidence]
+      required: [data]
+
+    EmailAlertConfigResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            configured:
+              type: boolean
+            id:
+              type: string
+              nullable: true
+            type:
+              type: string
+              enum: [email]
+            enabled:
+              type: boolean
+            from:
+              type: string
+              format: email
+              nullable: true
+            recipients:
+              type: array
+              items:
+                type: string
+                format: email
+            smtp:
+              $ref: '#/components/schemas/SmtpConfigData'
+            min_confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+            updated_at:
+              type: string
+              format: date-time
+              nullable: true
+          required: [configured, type, enabled, recipients, smtp, min_confidence]
+      required: [data]
+
+    SmtpConfigData:
+      type: object
+      properties:
+        host:
+          type: string
+          nullable: true
+        port:
+          type: integer
+          nullable: true
+        username:
+          type: string
+          nullable: true
+        password:
+          type: string
+          nullable: true
+        password_configured:
+          type: boolean
+        starttls:
+          type: boolean
+      required: [password_configured, starttls]
 
     AuditLog:
       type: object

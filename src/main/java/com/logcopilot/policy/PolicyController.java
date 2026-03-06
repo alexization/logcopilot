@@ -2,6 +2,7 @@ package com.logcopilot.policy;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.logcopilot.common.error.BadRequestException;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,6 +20,39 @@ public class PolicyController {
 
 	public PolicyController(PolicyService policyService) {
 		this.policyService = policyService;
+	}
+
+	@GetMapping("/export")
+	public ExportPolicyDetailResponse getExportPolicy(
+		@PathVariable("project_id") String projectId
+	) {
+		PolicyService.ExportPolicyView policy = policyService.getExportPolicy(projectId);
+		return new ExportPolicyDetailResponse(new ExportPolicyDetailData(
+			policy.configured(),
+			policy.level(),
+			policy.updatedAt()
+		));
+	}
+
+	@GetMapping("/redaction")
+	public RedactionPolicyDetailResponse getRedactionPolicy(
+		@PathVariable("project_id") String projectId
+	) {
+		PolicyService.RedactionPolicyView policy = policyService.getRedactionPolicy(projectId);
+		List<RedactionRuleData> rules = policy.rules().stream()
+			.map(rule -> new RedactionRuleData(
+				rule.name(),
+				rule.pattern(),
+				rule.replaceWith()
+			))
+			.toList();
+		return new RedactionPolicyDetailResponse(new RedactionPolicyDetailData(
+			policy.configured(),
+			policy.enabled(),
+			rules.size(),
+			rules,
+			policy.updatedAt()
+		));
 	}
 
 	@PutMapping("/export")
@@ -95,6 +129,39 @@ public class PolicyController {
 	}
 
 	public record RedactionPolicyResponse(RedactionPolicyData data) {
+	}
+
+	public record ExportPolicyDetailResponse(ExportPolicyDetailData data) {
+	}
+
+	public record ExportPolicyDetailData(
+		boolean configured,
+		String level,
+		@JsonProperty("updated_at")
+		Instant updatedAt
+	) {
+	}
+
+	public record RedactionPolicyDetailResponse(RedactionPolicyDetailData data) {
+	}
+
+	public record RedactionPolicyDetailData(
+		boolean configured,
+		boolean enabled,
+		@JsonProperty("rules_count")
+		int rulesCount,
+		List<RedactionRuleData> rules,
+		@JsonProperty("updated_at")
+		Instant updatedAt
+	) {
+	}
+
+	public record RedactionRuleData(
+		String name,
+		String pattern,
+		@JsonProperty("replace_with")
+		String replaceWith
+	) {
 	}
 
 	public record RedactionPolicyData(
