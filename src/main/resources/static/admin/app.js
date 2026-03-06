@@ -35,6 +35,7 @@
 			description: "cursor/limit 기반 감사 로그 조회와 실패 UX를 제공합니다."
 		}
 	};
+	const PROJECT_SCOPED_NAVS = ["connectors", "llm", "policies", "alerts", "incidents", "audit"];
 
 	const state = {
 		activeNav: "overview",
@@ -132,18 +133,20 @@
 				showToast("API 토큰을 입력해 주세요.");
 				return;
 			}
-			state.token = token;
-			updateAuthStatus();
+			state.refreshRequestId += 1;
 			try {
-				await primeAuthenticatedContext();
+				const authContext = await primeAuthenticatedContext(token);
+				commitAuthenticatedContext(token, authContext);
 				setSectionFeedback("토큰이 설정되었습니다. 운영 API를 호출할 수 있습니다.", "success");
 				await refreshCurrentSection();
 			} catch (error) {
 				handleSectionError("토큰 연결 초기화에 실패했습니다.", error);
+				updateAuthStatus();
 			}
 		});
 
 		elements.clearButton.addEventListener("click", () => {
+			state.refreshRequestId += 1;
 			state.token = "";
 			elements.tokenInput.value = "";
 			clearCachedData();
@@ -165,13 +168,37 @@
 		state.redactionPoliciesByProjectId = {};
 		state.slackAlertsByProjectId = {};
 		state.emailAlertsByProjectId = {};
+		resetProjectScopedState();
 		updateActiveProject("");
 	}
 
-	async function primeAuthenticatedContext() {
-		requireToken();
-		await refreshProjects();
-		await refreshTokens();
+	async function primeAuthenticatedContext(tokenOverride) {
+		const token = tokenOverride || getStoredToken();
+		if (!token) {
+			throw new Error("API 토큰을 먼저 설정해 주세요.");
+		}
+		const authClient = tokenOverride ? createApiClient(() => tokenOverride) : apiClient;
+		const projects = await authClient.listProjects();
+		const tokens = await authClient.listTokens();
+		return { projects, tokens };
+	}
+
+	function commitAuthenticatedContext(token, authContext) {
+		const previousProjectId = state.activeProjectId;
+		clearCachedData();
+		state.token = token;
+		state.projects = authContext.projects && Array.isArray(authContext.projects.data)
+			? authContext.projects.data
+			: [];
+		state.tokens = authContext.tokens && Array.isArray(authContext.tokens.data)
+			? authContext.tokens.data
+			: [];
+		if (previousProjectId && state.projects.some((project) => project && project.id === previousProjectId)) {
+			updateActiveProject(previousProjectId);
+		}
+		reconcileActiveProject();
+		renderActiveProject();
+		updateAuthStatus();
 	}
 
 	function validateRequiredElements() {
@@ -246,6 +273,10 @@
 			return Boolean(state.activeProjectId) && state.llmAccounts.length === 0;
 		}
 		return ["overview", "projects", "incidents", "audit"].includes(state.activeNav);
+	}
+
+	function isProjectScopedNav(nav) {
+		return PROJECT_SCOPED_NAVS.includes(nav);
 	}
 
 	function renderActiveSection() {
@@ -714,8 +745,16 @@
 						poll_interval_seconds: pollInterval ? Number(pollInterval) : null
 					};
 
+					const sectionContext = createSectionContextSnapshot("connectors", projectId);
 					const response = await apiClient.upsertLokiConnector(projectId, payload);
-					await loadConnectorSettings();
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const connector = await loadConnectorSettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyConnectorSettings(projectId, connector);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
@@ -956,8 +995,16 @@
 					const payload = {
 						level: valueOf("#export-level")
 					};
+					const sectionContext = createSectionContextSnapshot("policies", projectId);
 					const response = await apiClient.updateExportPolicy(projectId, payload);
-					await loadPolicySettings();
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const policies = await loadPolicySettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyPolicySettings(projectId, policies);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
@@ -981,8 +1028,16 @@
 						enabled: Boolean(enabledInput && enabledInput.checked),
 						rules: parseRedactionRules(rulesText)
 					};
+					const sectionContext = createSectionContextSnapshot("policies", projectId);
 					const response = await apiClient.updateRedactionPolicy(projectId, payload);
-					await loadPolicySettings();
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const policies = await loadPolicySettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyPolicySettings(projectId, policies);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
@@ -1015,7 +1070,7 @@
 		const slackChannel = safeString(slackAlert && slackAlert.channel);
 		const slackMinConfidence = slackAlert && slackAlert.min_confidence != null
 			? String(slackAlert.min_confidence)
-			: "0.7";
+			: "0.45";
 		const emailFrom = safeString(emailAlert && emailAlert.from);
 		const emailRecipients = emailAlert && Array.isArray(emailAlert.recipients)
 			? emailAlert.recipients.join(", ")
@@ -1032,7 +1087,7 @@
 		const emailSmtpStarttls = !(emailAlert && emailAlert.smtp && emailAlert.smtp.starttls === false);
 		const emailMinConfidence = emailAlert && emailAlert.min_confidence != null
 			? String(emailAlert.min_confidence)
-			: "0.7";
+			: "0.45";
 		const slackWebhookPlaceholder = slackWebhookConfigured ? "저장됨(변경 시 새 URL 입력)" : "";
 		const emailSmtpPasswordPlaceholder = emailSmtpPasswordConfigured ? "저장됨(변경 시 새 값 입력)" : "";
 
@@ -1096,8 +1151,16 @@
 						channel: valueOf("#slack-channel").trim(),
 						min_confidence: parseFloatSafe(valueOf("#slack-min-confidence"))
 					};
+					const sectionContext = createSectionContextSnapshot("alerts", projectId);
 					const response = await apiClient.configureSlack(projectId, payload);
-					await loadAlertSettings();
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const alerts = await loadAlertSettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyAlertSettings(projectId, alerts);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
@@ -1128,8 +1191,16 @@
 						},
 						min_confidence: parseFloatSafe(valueOf("#email-min-confidence"))
 					};
+					const sectionContext = createSectionContextSnapshot("alerts", projectId);
 					const response = await apiClient.configureEmail(projectId, payload);
-					await loadAlertSettings();
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const alerts = await loadAlertSettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyAlertSettings(projectId, alerts);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
@@ -1376,14 +1447,13 @@
 			});
 			return;
 		}
-		const refreshRequestId = ++state.refreshRequestId;
-		const navSnapshot = state.activeNav;
+		const refreshContext = createRefreshContextSnapshot();
 
 		try {
 			switch (state.activeNav) {
 				case "overview": {
 					const overview = await loadOverviewData();
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
 					renderOverviewSection();
@@ -1392,7 +1462,7 @@
 				}
 				case "projects": {
 					const projects = await refreshProjects();
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
 					renderProjectsSection();
@@ -1400,10 +1470,11 @@
 					break;
 				}
 				case "connectors": {
-					const connector = await loadConnectorSettings();
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					const connector = await loadConnectorSettings(refreshContext.projectId, { store: false });
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
+					applyConnectorSettings(refreshContext.projectId, connector);
 					if (!hasFocusedFieldInSection()) {
 						renderConnectorsSection();
 					}
@@ -1412,7 +1483,7 @@
 				}
 				case "llm": {
 					const llmData = await refreshLlmAccounts();
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
 					renderLlmSection();
@@ -1420,10 +1491,11 @@
 					break;
 				}
 				case "policies": {
-					const policies = await loadPolicySettings();
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					const policies = await loadPolicySettings(refreshContext.projectId, { store: false });
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
+					applyPolicySettings(refreshContext.projectId, policies);
 					if (!hasFocusedFieldInSection()) {
 						renderPoliciesSection();
 					}
@@ -1431,10 +1503,11 @@
 					break;
 				}
 				case "alerts": {
-					const alerts = await loadAlertSettings();
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					const alerts = await loadAlertSettings(refreshContext.projectId, { store: false });
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
+					applyAlertSettings(refreshContext.projectId, alerts);
 					if (!hasFocusedFieldInSection()) {
 						renderAlertsSection();
 					}
@@ -1443,7 +1516,7 @@
 				}
 				case "incidents": {
 					const incidents = await loadIncidents();
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
 					renderIncidentsSection();
@@ -1452,7 +1525,7 @@
 				}
 				case "audit": {
 					const audits = await loadAuditLogs();
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
 					renderAuditSection();
@@ -1460,7 +1533,7 @@
 					break;
 				}
 				default:
-					if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+					if (!isRefreshContextCurrent(refreshContext)) {
 						return;
 					}
 					setPreview({
@@ -1470,20 +1543,47 @@
 						active_project_id: state.activeProjectId || null
 					});
 			}
-			if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+			if (!isRefreshContextCurrent(refreshContext)) {
 				return;
 			}
 			setSectionFeedback("최신 데이터를 반영했습니다.", "success");
 		} catch (error) {
-			if (!isRefreshContextCurrent(refreshRequestId, navSnapshot)) {
+			if (!isRefreshContextCurrent(refreshContext)) {
 				return;
 			}
 			handleSectionError("새로고침에 실패했습니다.", error);
 		}
 	}
 
-	function isRefreshContextCurrent(refreshRequestId, navSnapshot) {
-		return refreshRequestId === state.refreshRequestId && navSnapshot === state.activeNav;
+	function createRefreshContextSnapshot() {
+		const navSnapshot = state.activeNav;
+		return {
+			requestId: ++state.refreshRequestId,
+			nav: navSnapshot,
+			token: getStoredToken(),
+			projectId: isProjectScopedNav(navSnapshot) ? state.activeProjectId : ""
+		};
+	}
+
+	function isRefreshContextCurrent(refreshContext) {
+		return refreshContext.requestId === state.refreshRequestId
+			&& refreshContext.nav === state.activeNav
+			&& refreshContext.token === getStoredToken()
+			&& (!isProjectScopedNav(refreshContext.nav) || refreshContext.projectId === state.activeProjectId);
+	}
+
+	function createSectionContextSnapshot(nav, projectId) {
+		return {
+			nav,
+			token: getStoredToken(),
+			projectId: isProjectScopedNav(nav) ? projectId : ""
+		};
+	}
+
+	function isSectionContextCurrent(sectionContext) {
+		return sectionContext.nav === state.activeNav
+			&& sectionContext.token === getStoredToken()
+			&& (!isProjectScopedNav(sectionContext.nav) || sectionContext.projectId === state.activeProjectId);
 	}
 
 	function hasFocusedFieldInSection() {
@@ -1552,38 +1652,66 @@
 		return response;
 	}
 
-	async function loadConnectorSettings() {
+	async function loadConnectorSettings(projectIdOverride, options) {
 		requireToken();
-		const projectId = requireActiveProject();
+		const projectId = projectIdOverride || requireActiveProject();
 		const response = await apiClient.getLokiConnector(projectId);
-		state.connectorSettingsByProjectId[projectId] = response && response.data ? response.data : null;
+		if (!options || options.store !== false) {
+			applyConnectorSettings(projectId, response);
+		}
 		return response;
 	}
 
-	async function loadPolicySettings() {
+	function applyConnectorSettings(projectId, response) {
+		state.connectorSettingsByProjectId[projectId] = response && response.data ? response.data : null;
+	}
+
+	async function loadPolicySettings(projectIdOverride, options) {
 		requireToken();
-		const projectId = requireActiveProject();
+		const projectId = projectIdOverride || requireActiveProject();
 		const exportPolicy = await apiClient.getExportPolicy(projectId);
 		const redactionPolicy = await apiClient.getRedactionPolicy(projectId);
-		state.exportPoliciesByProjectId[projectId] = exportPolicy && exportPolicy.data ? exportPolicy.data : null;
-		state.redactionPoliciesByProjectId[projectId] = redactionPolicy && redactionPolicy.data ? redactionPolicy.data : null;
-		return {
+		const response = {
 			export: exportPolicy,
 			redaction: redactionPolicy
 		};
+		if (!options || options.store !== false) {
+			applyPolicySettings(projectId, response);
+		}
+		return response;
 	}
 
-	async function loadAlertSettings() {
+	function applyPolicySettings(projectId, response) {
+		state.exportPoliciesByProjectId[projectId] = response && response.export && response.export.data
+			? response.export.data
+			: null;
+		state.redactionPoliciesByProjectId[projectId] = response && response.redaction && response.redaction.data
+			? response.redaction.data
+			: null;
+	}
+
+	async function loadAlertSettings(projectIdOverride, options) {
 		requireToken();
-		const projectId = requireActiveProject();
+		const projectId = projectIdOverride || requireActiveProject();
 		const slack = await apiClient.getSlackAlert(projectId);
 		const email = await apiClient.getEmailAlert(projectId);
-		state.slackAlertsByProjectId[projectId] = slack && slack.data ? slack.data : null;
-		state.emailAlertsByProjectId[projectId] = email && email.data ? email.data : null;
-		return {
+		const response = {
 			slack,
 			email
 		};
+		if (!options || options.store !== false) {
+			applyAlertSettings(projectId, response);
+		}
+		return response;
+	}
+
+	function applyAlertSettings(projectId, response) {
+		state.slackAlertsByProjectId[projectId] = response && response.slack && response.slack.data
+			? response.slack.data
+			: null;
+		state.emailAlertsByProjectId[projectId] = response && response.email && response.email.data
+			? response.email.data
+			: null;
 	}
 
 	function reconcileActiveProject() {

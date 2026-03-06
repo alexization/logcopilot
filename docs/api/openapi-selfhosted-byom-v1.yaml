@@ -1726,6 +1726,7 @@ components:
       type: object
       properties:
         webhook_url:
+          description: Required on first configuration. On update, blank/null/omitted preserves the previously stored webhook secret.
           oneOf:
             - type: string
               format: uri
@@ -1764,6 +1765,7 @@ components:
             username:
               type: string
             password:
+              description: Required on first configuration. On update, blank/null/omitted preserves the previously stored SMTP password.
               oneOf:
                 - type: string
                 - type: string
