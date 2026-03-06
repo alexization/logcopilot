@@ -35,6 +35,7 @@
 			description: "cursor/limit 기반 감사 로그 조회와 실패 UX를 제공합니다."
 		}
 	};
+	const PROJECT_SCOPED_NAVS = ["connectors", "llm", "policies", "alerts", "incidents", "audit"];
 
 	const state = {
 		activeNav: "overview",
@@ -47,6 +48,11 @@
 		tokens: [],
 		projects: [],
 		activeProjectId: "",
+		connectorSettingsByProjectId: {},
+		exportPoliciesByProjectId: {},
+		redactionPoliciesByProjectId: {},
+		slackAlertsByProjectId: {},
+		emailAlertsByProjectId: {},
 		llmAccounts: [],
 		incidents: [],
 		incidentMeta: null,
@@ -64,7 +70,8 @@
 			actor: "",
 			cursor: "",
 			limit: "50"
-		}
+		},
+		refreshRequestId: 0
 	};
 
 	const elements = {
@@ -126,13 +133,20 @@
 				showToast("API 토큰을 입력해 주세요.");
 				return;
 			}
-			state.token = token;
-			updateAuthStatus();
-			setSectionFeedback("토큰이 설정되었습니다. 운영 API를 호출할 수 있습니다.", "success");
-			await refreshCurrentSection();
+			state.refreshRequestId += 1;
+			try {
+				const authContext = await primeAuthenticatedContext(token);
+				commitAuthenticatedContext(token, authContext);
+				setSectionFeedback("토큰이 설정되었습니다. 운영 API를 호출할 수 있습니다.", "success");
+				await refreshCurrentSection();
+			} catch (error) {
+				handleSectionError("토큰 연결 초기화에 실패했습니다.", error);
+				updateAuthStatus();
+			}
 		});
 
 		elements.clearButton.addEventListener("click", () => {
+			state.refreshRequestId += 1;
 			state.token = "";
 			elements.tokenInput.value = "";
 			clearCachedData();
@@ -149,7 +163,42 @@
 	function clearCachedData() {
 		state.tokens = [];
 		state.projects = [];
+		state.connectorSettingsByProjectId = {};
+		state.exportPoliciesByProjectId = {};
+		state.redactionPoliciesByProjectId = {};
+		state.slackAlertsByProjectId = {};
+		state.emailAlertsByProjectId = {};
+		resetProjectScopedState();
 		updateActiveProject("");
+	}
+
+	async function primeAuthenticatedContext(tokenOverride) {
+		const token = tokenOverride || getStoredToken();
+		if (!token) {
+			throw new Error("API 토큰을 먼저 설정해 주세요.");
+		}
+		const authClient = tokenOverride ? createApiClient(() => tokenOverride) : apiClient;
+		const projects = await authClient.listProjects();
+		const tokens = await authClient.listTokens();
+		return { projects, tokens };
+	}
+
+	function commitAuthenticatedContext(token, authContext) {
+		const previousProjectId = state.activeProjectId;
+		clearCachedData();
+		state.token = token;
+		state.projects = authContext.projects && Array.isArray(authContext.projects.data)
+			? authContext.projects.data
+			: [];
+		state.tokens = authContext.tokens && Array.isArray(authContext.tokens.data)
+			? authContext.tokens.data
+			: [];
+		if (previousProjectId && state.projects.some((project) => project && project.id === previousProjectId)) {
+			updateActiveProject(previousProjectId);
+		}
+		reconcileActiveProject();
+		renderActiveProject();
+		updateAuthStatus();
 	}
 
 	function validateRequiredElements() {
@@ -198,6 +247,36 @@
 		setSectionFeedback(section.description, "info");
 		renderActiveProject();
 		renderActiveSection();
+		if (shouldAutoRefreshActiveSection()) {
+			refreshCurrentSection();
+		}
+	}
+
+	function shouldAutoRefreshActiveSection() {
+		if (!getStoredToken()) {
+			return false;
+		}
+		if (state.activeNav === "connectors") {
+			return Boolean(state.activeProjectId) && !state.connectorSettingsByProjectId[state.activeProjectId];
+		}
+		if (state.activeNav === "policies") {
+			return Boolean(state.activeProjectId)
+				&& (!state.exportPoliciesByProjectId[state.activeProjectId]
+					|| !state.redactionPoliciesByProjectId[state.activeProjectId]);
+		}
+		if (state.activeNav === "alerts") {
+			return Boolean(state.activeProjectId)
+				&& (!state.slackAlertsByProjectId[state.activeProjectId]
+					|| !state.emailAlertsByProjectId[state.activeProjectId]);
+		}
+		if (state.activeNav === "llm") {
+			return Boolean(state.activeProjectId) && state.llmAccounts.length === 0;
+		}
+		return ["overview", "projects", "incidents", "audit"].includes(state.activeNav);
+	}
+
+	function isProjectScopedNav(nav) {
+		return PROJECT_SCOPED_NAVS.includes(nav);
 	}
 
 	function renderActiveSection() {
@@ -555,6 +634,22 @@
 			renderProjectRequiredMessage("커넥터 설정");
 			return;
 		}
+		const connector = state.connectorSettingsByProjectId[projectId] || null;
+		const connectorAuth = connector && connector.auth ? connector.auth : { type: "none" };
+		const authType = safeString(connectorAuth.type || "none");
+		const endpointValue = safeString(connector && connector.endpoint);
+		const tenantValue = safeString(connector && connector.tenant_id);
+		const queryValue = safeString(connector && connector.query);
+		const pollValue = connector && connector.poll_interval_seconds != null
+			? String(connector.poll_interval_seconds)
+			: "30";
+		const tokenConfigured = Boolean(connectorAuth.token_configured);
+		const passwordConfigured = Boolean(connectorAuth.password_configured);
+		const tokenValue = "";
+		const usernameValue = safeString(connectorAuth.username);
+		const passwordValue = "";
+		const tokenPlaceholder = tokenConfigured ? "저장됨(변경 시 새 값 입력)" : "";
+		const passwordPlaceholder = passwordConfigured ? "저장됨(변경 시 새 값 입력)" : "";
 
 		setSectionBody(
 			"<article class=\"workspace-card\">" +
@@ -562,25 +657,25 @@
 				"<p class=\"muted\">프로젝트: <code>" + escapeHtml(projectId) + "</code></p>" +
 				"<form id=\"connector-upsert-form\" class=\"form-grid\">" +
 					"<label for=\"connector-endpoint\">Endpoint</label>" +
-					"<input id=\"connector-endpoint\" type=\"url\" placeholder=\"https://loki.internal\" required>" +
+					"<input id=\"connector-endpoint\" type=\"url\" placeholder=\"https://loki.internal\" value=\"" + escapeHtml(endpointValue) + "\" required>" +
 					"<label for=\"connector-tenant\">Tenant ID (선택)</label>" +
-					"<input id=\"connector-tenant\" type=\"text\" placeholder=\"tenant-a\">" +
+					"<input id=\"connector-tenant\" type=\"text\" placeholder=\"tenant-a\" value=\"" + escapeHtml(tenantValue) + "\">" +
 					"<label for=\"connector-query\">Query</label>" +
-					"<input id=\"connector-query\" type=\"text\" placeholder=\"{service=\\\"api\\\"} |= \\\"error\\\"\" required>" +
+					"<input id=\"connector-query\" type=\"text\" placeholder=\"{service=\\\"api\\\"} |= \\\"error\\\"\" value=\"" + escapeHtml(queryValue) + "\" required>" +
 					"<label for=\"connector-poll\">Poll Interval (sec)</label>" +
-					"<input id=\"connector-poll\" type=\"number\" min=\"5\" max=\"300\" value=\"30\">" +
+					"<input id=\"connector-poll\" type=\"number\" min=\"5\" max=\"300\" value=\"" + escapeHtml(pollValue) + "\">" +
 					"<label for=\"connector-auth-type\">Auth Type</label>" +
 					"<select id=\"connector-auth-type\">" +
-						"<option value=\"none\">none</option>" +
-						"<option value=\"bearer\">bearer</option>" +
-						"<option value=\"basic\">basic</option>" +
+						"<option value=\"none\"" + selected(authType, "none") + ">none</option>" +
+						"<option value=\"bearer\"" + selected(authType, "bearer") + ">bearer</option>" +
+						"<option value=\"basic\"" + selected(authType, "basic") + ">basic</option>" +
 					"</select>" +
 					"<label for=\"connector-auth-token\">Bearer Token</label>" +
-					"<input id=\"connector-auth-token\" type=\"password\" autocomplete=\"off\">" +
+					"<input id=\"connector-auth-token\" type=\"password\" autocomplete=\"off\" value=\"" + escapeHtml(tokenValue) + "\" placeholder=\"" + escapeHtml(tokenPlaceholder) + "\">" +
 					"<label for=\"connector-auth-username\">Basic Username</label>" +
-					"<input id=\"connector-auth-username\" type=\"text\">" +
+					"<input id=\"connector-auth-username\" type=\"text\" value=\"" + escapeHtml(usernameValue) + "\">" +
 					"<label for=\"connector-auth-password\">Basic Password</label>" +
-					"<input id=\"connector-auth-password\" type=\"password\" autocomplete=\"off\">" +
+					"<input id=\"connector-auth-password\" type=\"password\" autocomplete=\"off\" value=\"" + escapeHtml(passwordValue) + "\" placeholder=\"" + escapeHtml(passwordPlaceholder) + "\">" +
 					"<div class=\"inline-actions\">" +
 						"<button type=\"submit\">저장/갱신</button>" +
 						"<button type=\"button\" class=\"secondary\" id=\"connector-test-button\">연결 테스트</button>" +
@@ -605,7 +700,7 @@
 
 			if (tokenInput) {
 				tokenInput.disabled = !useBearer;
-				tokenInput.required = useBearer;
+				tokenInput.required = false;
 			}
 			if (usernameInput) {
 				usernameInput.disabled = !useBasic;
@@ -613,7 +708,7 @@
 			}
 			if (passwordInput) {
 				passwordInput.disabled = !useBasic;
-				passwordInput.required = useBasic;
+				passwordInput.required = false;
 			}
 		}
 
@@ -650,12 +745,22 @@
 						poll_interval_seconds: pollInterval ? Number(pollInterval) : null
 					};
 
+					const sectionContext = createSectionContextSnapshot("connectors", projectId);
 					const response = await apiClient.upsertLokiConnector(projectId, payload);
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const connector = await loadConnectorSettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyConnectorSettings(projectId, connector);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
 					setSectionFeedback("Loki 커넥터 설정이 저장되었습니다.", "success");
 					setPreview(response);
+					renderConnectorsSection();
 				} catch (error) {
 					handleSectionError("커넥터 설정 저장에 실패했습니다.", error);
 				}
@@ -678,6 +783,10 @@
 			});
 		}
 
+		if (connector && connector.configured) {
+			setSectionHint("저장된 Loki 설정을 불러왔습니다. 필요한 항목만 수정 후 다시 저장하세요.");
+			return;
+		}
 		setSectionHint("커넥터 저장 후 테스트로 연결 상태를 점검하세요.");
 	}
 
@@ -826,6 +935,19 @@
 			renderProjectRequiredMessage("정책 설정");
 			return;
 		}
+		const exportPolicy = state.exportPoliciesByProjectId[projectId] || null;
+		const redactionPolicy = state.redactionPoliciesByProjectId[projectId] || null;
+		const exportLevel = safeString(
+			exportPolicy && exportPolicy.level
+				? exportPolicy.level
+				: "level1_byom_only"
+		);
+		const redactionEnabled = redactionPolicy ? Boolean(redactionPolicy.enabled) : true;
+		const redactionRulesText = formatRedactionRulesForTextarea(
+			redactionPolicy && Array.isArray(redactionPolicy.rules)
+				? redactionPolicy.rules
+				: []
+		);
 
 		setSectionBody(
 			"<div class=\"workspace-grid\">" +
@@ -834,9 +956,9 @@
 					"<form id=\"export-policy-form\" class=\"form-grid\">" +
 						"<label for=\"export-level\">Export Level</label>" +
 						"<select id=\"export-level\">" +
-							"<option value=\"level0_rule_only\">level0_rule_only</option>" +
-							"<option value=\"level1_byom_only\" selected>level1_byom_only</option>" +
-							"<option value=\"level2_byom_with_telemetry\">level2_byom_with_telemetry</option>" +
+							"<option value=\"level0_rule_only\"" + selected(exportLevel, "level0_rule_only") + ">level0_rule_only</option>" +
+							"<option value=\"level1_byom_only\"" + selected(exportLevel, "level1_byom_only") + ">level1_byom_only</option>" +
+							"<option value=\"level2_byom_with_telemetry\"" + selected(exportLevel, "level2_byom_with_telemetry") + ">level2_byom_with_telemetry</option>" +
 						"</select>" +
 						"<div class=\"inline-actions\">" +
 							"<button type=\"submit\">Export 정책 저장</button>" +
@@ -847,11 +969,11 @@
 					"<h3>Redaction 정책</h3>" +
 					"<form id=\"redaction-policy-form\" class=\"form-grid\">" +
 						"<label class=\"checkbox-row\">" +
-							"<input id=\"redaction-enabled\" type=\"checkbox\" checked>" +
+							"<input id=\"redaction-enabled\" type=\"checkbox\"" + (redactionEnabled ? " checked" : "") + ">" +
 							"<span>Redaction 활성화</span>" +
 						"</label>" +
 						"<label for=\"redaction-rules\">규칙 (한 줄당 name|pattern|replace_with)</label>" +
-						"<textarea id=\"redaction-rules\" rows=\"5\" placeholder=\"api_key|api[_-]?key\\\s*[:=]\\\s*[^\\\\s]+|api_key=***\"></textarea>" +
+						"<textarea id=\"redaction-rules\" rows=\"5\" placeholder=\"api_key|api[_-]?key\\\s*[:=]\\\s*[^\\\\s]+|api_key=***\">" + escapeHtml(redactionRulesText) + "</textarea>" +
 						"<div class=\"inline-actions\">" +
 							"<button type=\"submit\">Redaction 정책 저장</button>" +
 						"</div>" +
@@ -873,12 +995,22 @@
 					const payload = {
 						level: valueOf("#export-level")
 					};
+					const sectionContext = createSectionContextSnapshot("policies", projectId);
 					const response = await apiClient.updateExportPolicy(projectId, payload);
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const policies = await loadPolicySettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyPolicySettings(projectId, policies);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
 					setSectionFeedback("Export 정책을 저장했습니다.", "success");
 					setPreview(response);
+					renderPoliciesSection();
 				} catch (error) {
 					handleSectionError("Export 정책 저장에 실패했습니다.", error);
 				}
@@ -896,18 +1028,32 @@
 						enabled: Boolean(enabledInput && enabledInput.checked),
 						rules: parseRedactionRules(rulesText)
 					};
+					const sectionContext = createSectionContextSnapshot("policies", projectId);
 					const response = await apiClient.updateRedactionPolicy(projectId, payload);
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const policies = await loadPolicySettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyPolicySettings(projectId, policies);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
 					setSectionFeedback("Redaction 정책을 저장했습니다.", "success");
 					setPreview(response);
+					renderPoliciesSection();
 				} catch (error) {
 					handleSectionError("Redaction 정책 저장에 실패했습니다.", error);
 				}
 			});
 		}
 
+		if (exportPolicy || redactionPolicy) {
+			setSectionHint("저장된 정책을 불러왔습니다. 수정 후 저장하면 즉시 반영됩니다.");
+			return;
+		}
 		setSectionHint("정책 저장 시 결과가 즉시 표시됩니다.");
 	}
 
@@ -917,6 +1063,33 @@
 			renderProjectRequiredMessage("알림 설정");
 			return;
 		}
+		const slackAlert = state.slackAlertsByProjectId[projectId] || null;
+		const emailAlert = state.emailAlertsByProjectId[projectId] || null;
+		const slackWebhookConfigured = Boolean(slackAlert && slackAlert.webhook_configured);
+		const slackWebhook = "";
+		const slackChannel = safeString(slackAlert && slackAlert.channel);
+		const slackMinConfidence = slackAlert && slackAlert.min_confidence != null
+			? String(slackAlert.min_confidence)
+			: "0.45";
+		const emailFrom = safeString(emailAlert && emailAlert.from);
+		const emailRecipients = emailAlert && Array.isArray(emailAlert.recipients)
+			? emailAlert.recipients.join(", ")
+			: "";
+		const emailSmtpHost = safeString(emailAlert && emailAlert.smtp && emailAlert.smtp.host);
+		const emailSmtpPort = emailAlert && emailAlert.smtp && emailAlert.smtp.port != null
+			? String(emailAlert.smtp.port)
+			: "587";
+		const emailSmtpUsername = safeString(emailAlert && emailAlert.smtp && emailAlert.smtp.username);
+		const emailSmtpPasswordConfigured = Boolean(
+			emailAlert && emailAlert.smtp && emailAlert.smtp.password_configured
+		);
+		const emailSmtpPassword = "";
+		const emailSmtpStarttls = !(emailAlert && emailAlert.smtp && emailAlert.smtp.starttls === false);
+		const emailMinConfidence = emailAlert && emailAlert.min_confidence != null
+			? String(emailAlert.min_confidence)
+			: "0.45";
+		const slackWebhookPlaceholder = slackWebhookConfigured ? "저장됨(변경 시 새 URL 입력)" : "";
+		const emailSmtpPasswordPlaceholder = emailSmtpPasswordConfigured ? "저장됨(변경 시 새 값 입력)" : "";
 
 		setSectionBody(
 			"<div class=\"workspace-grid\">" +
@@ -924,11 +1097,11 @@
 					"<h3>Slack 알림</h3>" +
 					"<form id=\"slack-alert-form\" class=\"form-grid\">" +
 						"<label for=\"slack-webhook\">Webhook URL</label>" +
-						"<input id=\"slack-webhook\" type=\"url\" placeholder=\"https://hooks.slack.com/services/...\" required>" +
+						"<input id=\"slack-webhook\" type=\"url\" placeholder=\"" + escapeHtml(slackWebhookPlaceholder || "https://hooks.slack.com/services/...") + "\" value=\"" + escapeHtml(slackWebhook) + "\">" +
 						"<label for=\"slack-channel\">Channel</label>" +
-						"<input id=\"slack-channel\" type=\"text\" placeholder=\"#alerts\" required>" +
+						"<input id=\"slack-channel\" type=\"text\" placeholder=\"#alerts\" value=\"" + escapeHtml(slackChannel) + "\" required>" +
 						"<label for=\"slack-min-confidence\">min_confidence</label>" +
-						"<input id=\"slack-min-confidence\" type=\"number\" min=\"0\" max=\"1\" step=\"0.01\" value=\"0.7\">" +
+						"<input id=\"slack-min-confidence\" type=\"number\" min=\"0\" max=\"1\" step=\"0.01\" value=\"" + escapeHtml(slackMinConfidence) + "\">" +
 						"<div class=\"inline-actions\">" +
 							"<button type=\"submit\">Slack 설정 저장</button>" +
 						"</div>" +
@@ -938,23 +1111,23 @@
 					"<h3>Email 알림</h3>" +
 					"<form id=\"email-alert-form\" class=\"form-grid\">" +
 						"<label for=\"email-from\">From</label>" +
-						"<input id=\"email-from\" type=\"email\" placeholder=\"noreply@logcopilot.io\" required>" +
+						"<input id=\"email-from\" type=\"email\" placeholder=\"noreply@logcopilot.io\" value=\"" + escapeHtml(emailFrom) + "\" required>" +
 						"<label for=\"email-recipients\">Recipients (comma/newline)</label>" +
-						"<textarea id=\"email-recipients\" rows=\"2\" placeholder=\"ops@logcopilot.io, sre@logcopilot.io\" required></textarea>" +
+						"<textarea id=\"email-recipients\" rows=\"2\" placeholder=\"ops@logcopilot.io, sre@logcopilot.io\" required>" + escapeHtml(emailRecipients) + "</textarea>" +
 						"<label for=\"smtp-host\">SMTP Host</label>" +
-						"<input id=\"smtp-host\" type=\"text\" placeholder=\"smtp.example.com\" required>" +
+						"<input id=\"smtp-host\" type=\"text\" placeholder=\"smtp.example.com\" value=\"" + escapeHtml(emailSmtpHost) + "\" required>" +
 						"<label for=\"smtp-port\">SMTP Port</label>" +
-						"<input id=\"smtp-port\" type=\"number\" min=\"1\" max=\"65535\" value=\"587\" required>" +
+						"<input id=\"smtp-port\" type=\"number\" min=\"1\" max=\"65535\" value=\"" + escapeHtml(emailSmtpPort) + "\" required>" +
 						"<label for=\"smtp-username\">SMTP Username</label>" +
-						"<input id=\"smtp-username\" type=\"text\" required>" +
+						"<input id=\"smtp-username\" type=\"text\" value=\"" + escapeHtml(emailSmtpUsername) + "\" required>" +
 						"<label for=\"smtp-password\">SMTP Password</label>" +
-						"<input id=\"smtp-password\" type=\"password\" autocomplete=\"off\" required>" +
+						"<input id=\"smtp-password\" type=\"password\" autocomplete=\"off\" value=\"" + escapeHtml(emailSmtpPassword) + "\" placeholder=\"" + escapeHtml(emailSmtpPasswordPlaceholder) + "\">" +
 						"<label class=\"checkbox-row\">" +
-							"<input id=\"smtp-starttls\" type=\"checkbox\" checked>" +
+							"<input id=\"smtp-starttls\" type=\"checkbox\"" + (emailSmtpStarttls ? " checked" : "") + ">" +
 							"<span>STARTTLS 사용</span>" +
 						"</label>" +
 						"<label for=\"email-min-confidence\">min_confidence</label>" +
-						"<input id=\"email-min-confidence\" type=\"number\" min=\"0\" max=\"1\" step=\"0.01\" value=\"0.7\">" +
+						"<input id=\"email-min-confidence\" type=\"number\" min=\"0\" max=\"1\" step=\"0.01\" value=\"" + escapeHtml(emailMinConfidence) + "\">" +
 						"<div class=\"inline-actions\">" +
 							"<button type=\"submit\">Email 설정 저장</button>" +
 						"</div>" +
@@ -978,12 +1151,22 @@
 						channel: valueOf("#slack-channel").trim(),
 						min_confidence: parseFloatSafe(valueOf("#slack-min-confidence"))
 					};
+					const sectionContext = createSectionContextSnapshot("alerts", projectId);
 					const response = await apiClient.configureSlack(projectId, payload);
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const alerts = await loadAlertSettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyAlertSettings(projectId, alerts);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
 					setSectionFeedback("Slack 알림 설정을 저장했습니다.", "success");
 					setPreview(response);
+					renderAlertsSection();
 				} catch (error) {
 					handleSectionError("Slack 알림 설정에 실패했습니다.", error);
 				}
@@ -1008,18 +1191,32 @@
 						},
 						min_confidence: parseFloatSafe(valueOf("#email-min-confidence"))
 					};
+					const sectionContext = createSectionContextSnapshot("alerts", projectId);
 					const response = await apiClient.configureEmail(projectId, payload);
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					const alerts = await loadAlertSettings(projectId, { store: false });
+					if (!isSectionContextCurrent(sectionContext)) {
+						return;
+					}
+					applyAlertSettings(projectId, alerts);
 					if (resultBox) {
 						resultBox.textContent = formatJson(response);
 					}
 					setSectionFeedback("Email 알림 설정을 저장했습니다.", "success");
 					setPreview(response);
+					renderAlertsSection();
 				} catch (error) {
 					handleSectionError("Email 알림 설정에 실패했습니다.", error);
 				}
 			});
 		}
 
+		if (slackAlert || emailAlert) {
+			setSectionHint("저장된 알림 설정을 불러왔습니다. 필요한 필드만 수정해 저장하세요.");
+			return;
+		}
 		setSectionHint("Slack/Email 설정은 즉시 API에 반영됩니다.");
 	}
 
@@ -1239,40 +1436,106 @@
 			setPreview("API 조회를 위해 토큰을 먼저 설정해 주세요.");
 			return;
 		}
+		const projectScopedSections = ["connectors", "llm", "policies", "alerts", "incidents", "audit"];
+		if (projectScopedSections.includes(state.activeNav) && !state.activeProjectId) {
+			renderActiveSection();
+			setSectionFeedback("활성 프로젝트를 먼저 선택해 주세요.", "info");
+			setPreview({
+				status: "ok",
+				message: "활성 프로젝트 선택이 필요합니다.",
+				section: state.activeNav
+			});
+			return;
+		}
+		const refreshContext = createRefreshContextSnapshot();
 
 		try {
 			switch (state.activeNav) {
 				case "overview": {
 					const overview = await loadOverviewData();
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
 					renderOverviewSection();
 					setPreview(overview);
 					break;
 				}
 				case "projects": {
 					const projects = await refreshProjects();
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
 					renderProjectsSection();
 					setPreview(projects);
 					break;
 				}
+				case "connectors": {
+					const connector = await loadConnectorSettings(refreshContext.projectId, { store: false });
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
+					applyConnectorSettings(refreshContext.projectId, connector);
+					if (!hasFocusedFieldInSection()) {
+						renderConnectorsSection();
+					}
+					setPreview(connector);
+					break;
+				}
 				case "llm": {
 					const llmData = await refreshLlmAccounts();
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
 					renderLlmSection();
 					setPreview(llmData);
 					break;
 				}
+				case "policies": {
+					const policies = await loadPolicySettings(refreshContext.projectId, { store: false });
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
+					applyPolicySettings(refreshContext.projectId, policies);
+					if (!hasFocusedFieldInSection()) {
+						renderPoliciesSection();
+					}
+					setPreview(policies);
+					break;
+				}
+				case "alerts": {
+					const alerts = await loadAlertSettings(refreshContext.projectId, { store: false });
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
+					applyAlertSettings(refreshContext.projectId, alerts);
+					if (!hasFocusedFieldInSection()) {
+						renderAlertsSection();
+					}
+					setPreview(alerts);
+					break;
+				}
 				case "incidents": {
 					const incidents = await loadIncidents();
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
 					renderIncidentsSection();
 					setPreview(incidents);
 					break;
 				}
 				case "audit": {
 					const audits = await loadAuditLogs();
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
 					renderAuditSection();
 					setPreview(audits);
 					break;
 				}
 				default:
+					if (!isRefreshContextCurrent(refreshContext)) {
+						return;
+					}
 					setPreview({
 						status: "ok",
 						message: "현재 섹션은 폼 액션으로 데이터를 조회/저장합니다.",
@@ -1280,10 +1543,59 @@
 						active_project_id: state.activeProjectId || null
 					});
 			}
+			if (!isRefreshContextCurrent(refreshContext)) {
+				return;
+			}
 			setSectionFeedback("최신 데이터를 반영했습니다.", "success");
 		} catch (error) {
+			if (!isRefreshContextCurrent(refreshContext)) {
+				return;
+			}
 			handleSectionError("새로고침에 실패했습니다.", error);
 		}
+	}
+
+	function createRefreshContextSnapshot() {
+		const navSnapshot = state.activeNav;
+		return {
+			requestId: ++state.refreshRequestId,
+			nav: navSnapshot,
+			token: getStoredToken(),
+			projectId: isProjectScopedNav(navSnapshot) ? state.activeProjectId : ""
+		};
+	}
+
+	function isRefreshContextCurrent(refreshContext) {
+		return refreshContext.requestId === state.refreshRequestId
+			&& refreshContext.nav === state.activeNav
+			&& refreshContext.token === getStoredToken()
+			&& (!isProjectScopedNav(refreshContext.nav) || refreshContext.projectId === state.activeProjectId);
+	}
+
+	function createSectionContextSnapshot(nav, projectId) {
+		return {
+			nav,
+			token: getStoredToken(),
+			projectId: isProjectScopedNav(nav) ? projectId : ""
+		};
+	}
+
+	function isSectionContextCurrent(sectionContext) {
+		return sectionContext.nav === state.activeNav
+			&& sectionContext.token === getStoredToken()
+			&& (!isProjectScopedNav(sectionContext.nav) || sectionContext.projectId === state.activeProjectId);
+	}
+
+	function hasFocusedFieldInSection() {
+		if (!elements.sectionBody) {
+			return false;
+		}
+		const active = document.activeElement;
+		if (!active || !elements.sectionBody.contains(active)) {
+			return false;
+		}
+		const tagName = active.tagName ? active.tagName.toUpperCase() : "";
+		return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
 	}
 
 	async function loadOverviewData() {
@@ -1338,6 +1650,68 @@
 		const response = await apiClient.listTokens();
 		state.tokens = response && Array.isArray(response.data) ? response.data : [];
 		return response;
+	}
+
+	async function loadConnectorSettings(projectIdOverride, options) {
+		requireToken();
+		const projectId = projectIdOverride || requireActiveProject();
+		const response = await apiClient.getLokiConnector(projectId);
+		if (!options || options.store !== false) {
+			applyConnectorSettings(projectId, response);
+		}
+		return response;
+	}
+
+	function applyConnectorSettings(projectId, response) {
+		state.connectorSettingsByProjectId[projectId] = response && response.data ? response.data : null;
+	}
+
+	async function loadPolicySettings(projectIdOverride, options) {
+		requireToken();
+		const projectId = projectIdOverride || requireActiveProject();
+		const exportPolicy = await apiClient.getExportPolicy(projectId);
+		const redactionPolicy = await apiClient.getRedactionPolicy(projectId);
+		const response = {
+			export: exportPolicy,
+			redaction: redactionPolicy
+		};
+		if (!options || options.store !== false) {
+			applyPolicySettings(projectId, response);
+		}
+		return response;
+	}
+
+	function applyPolicySettings(projectId, response) {
+		state.exportPoliciesByProjectId[projectId] = response && response.export && response.export.data
+			? response.export.data
+			: null;
+		state.redactionPoliciesByProjectId[projectId] = response && response.redaction && response.redaction.data
+			? response.redaction.data
+			: null;
+	}
+
+	async function loadAlertSettings(projectIdOverride, options) {
+		requireToken();
+		const projectId = projectIdOverride || requireActiveProject();
+		const slack = await apiClient.getSlackAlert(projectId);
+		const email = await apiClient.getEmailAlert(projectId);
+		const response = {
+			slack,
+			email
+		};
+		if (!options || options.store !== false) {
+			applyAlertSettings(projectId, response);
+		}
+		return response;
+	}
+
+	function applyAlertSettings(projectId, response) {
+		state.slackAlertsByProjectId[projectId] = response && response.slack && response.slack.data
+			? response.slack.data
+			: null;
+		state.emailAlertsByProjectId[projectId] = response && response.email && response.email.data
+			? response.email.data
+			: null;
 	}
 
 	function reconcileActiveProject() {
@@ -1573,6 +1947,21 @@
 				replace_with: replaceWith
 			};
 		});
+	}
+
+	function formatRedactionRulesForTextarea(rules) {
+		if (!Array.isArray(rules) || rules.length === 0) {
+			return "";
+		}
+		return rules.map((rule) => {
+			if (!rule) {
+				return "";
+			}
+			const name = safeString(rule.name);
+			const pattern = safeString(rule.pattern);
+			const replaceWith = safeString(rule.replace_with);
+			return name + "|" + pattern + "|" + replaceWith;
+		}).filter((line) => line.length > 0).join("\n");
 	}
 
 	function parseRecipients(raw) {
@@ -1865,6 +2254,9 @@
 				"/v1/projects/" + encode(projectId) + "/connectors/loki",
 				{ method: "POST", body: payload }
 			),
+			getLokiConnector: (projectId) => request(
+				"/v1/projects/" + encode(projectId) + "/connectors/loki"
+			),
 			testLokiConnector: (projectId) => request(
 				"/v1/projects/" + encode(projectId) + "/connectors/loki/test",
 				{ method: "POST" }
@@ -1886,17 +2278,29 @@
 				"/v1/projects/" + encode(projectId) + "/policies/export",
 				{ method: "PUT", body: payload }
 			),
+			getExportPolicy: (projectId) => request(
+				"/v1/projects/" + encode(projectId) + "/policies/export"
+			),
 			updateRedactionPolicy: (projectId, payload) => request(
 				"/v1/projects/" + encode(projectId) + "/policies/redaction",
 				{ method: "PUT", body: payload }
+			),
+			getRedactionPolicy: (projectId) => request(
+				"/v1/projects/" + encode(projectId) + "/policies/redaction"
 			),
 			configureSlack: (projectId, payload) => request(
 				"/v1/projects/" + encode(projectId) + "/alerts/slack",
 				{ method: "POST", body: payload }
 			),
+			getSlackAlert: (projectId) => request(
+				"/v1/projects/" + encode(projectId) + "/alerts/slack"
+			),
 			configureEmail: (projectId, payload) => request(
 				"/v1/projects/" + encode(projectId) + "/alerts/email",
 				{ method: "POST", body: payload }
+			),
+			getEmailAlert: (projectId) => request(
+				"/v1/projects/" + encode(projectId) + "/alerts/email"
 			),
 			listIncidents: (projectId, query) => request(
 				"/v1/projects/" + encode(projectId) + "/incidents",

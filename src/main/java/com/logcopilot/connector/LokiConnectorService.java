@@ -52,10 +52,9 @@ public class LokiConnectorService {
 
 		String endpoint = validateEndpoint(request.endpoint());
 		String query = validateQuery(request.query());
-		LokiAuth auth = validateAuth(request.auth());
-		int pollIntervalSeconds = validatePollIntervalSeconds(request.pollIntervalSeconds());
-
 		LokiConnector existing = connectorByProjectId.get(projectId);
+		LokiAuth auth = validateAuth(request.auth(), existing);
+		int pollIntervalSeconds = validatePollIntervalSeconds(request.pollIntervalSeconds());
 		if (existing == null) {
 			LokiConnector created = new LokiConnector(
 				UUID.randomUUID().toString(),
@@ -104,6 +103,38 @@ public class LokiConnectorService {
 		return Optional.ofNullable(connectorByProjectId.get(projectId));
 	}
 
+	public synchronized ConnectorConfiguration getConfiguration(String projectId) {
+		requireProject(projectId);
+		LokiConnector connector = connectorByProjectId.get(projectId);
+		if (connector == null) {
+			return new ConnectorConfiguration(
+				false,
+				null,
+				"loki",
+				"not_configured",
+				null,
+				null,
+				new LokiAuth("none", null, null, null),
+				null,
+				null,
+				null
+			);
+		}
+
+		return new ConnectorConfiguration(
+			true,
+			connector.id(),
+			"loki",
+			"active",
+			connector.endpoint(),
+			connector.tenantId(),
+			connector.auth(),
+			connector.query(),
+			connector.pollIntervalSeconds(),
+			connector.updatedAt()
+		);
+	}
+
 	public synchronized List<String> listConfiguredProjectIds() {
 		return List.copyOf(connectorByProjectId.keySet());
 	}
@@ -138,7 +169,7 @@ public class LokiConnectorService {
 		return query.trim();
 	}
 
-	private LokiAuth validateAuth(AuthRequest authRequest) {
+	private LokiAuth validateAuth(AuthRequest authRequest, LokiConnector existing) {
 		if (authRequest == null || authRequest.type() == null) {
 			throw new ValidationException("Auth type must be one of: none, bearer, basic");
 		}
@@ -146,22 +177,44 @@ public class LokiConnectorService {
 		return switch (authRequest.type()) {
 			case "none" -> new LokiAuth("none", null, null, null);
 			case "bearer" -> {
-				if (authRequest.token() == null || authRequest.token().trim().isEmpty()) {
+				String token = normalizeOptional(authRequest.token());
+				if (token == null && existing != null && existing.auth() != null && "bearer".equals(existing.auth().type())) {
+					token = normalizeOptional(existing.auth().token());
+				}
+				if (token == null) {
 					throw new ValidationException("Bearer auth requires token");
 				}
-				yield new LokiAuth("bearer", authRequest.token().trim(), null, null);
+				yield new LokiAuth("bearer", token, null, null);
 			}
 			case "basic" -> {
-				if (authRequest.username() == null || authRequest.username().trim().isEmpty()) {
+				String username = normalizeOptional(authRequest.username());
+				String password = normalizeOptional(authRequest.password());
+				if (existing != null && existing.auth() != null && "basic".equals(existing.auth().type())) {
+					if (username == null) {
+						username = normalizeOptional(existing.auth().username());
+					}
+					if (password == null) {
+						password = normalizeOptional(existing.auth().password());
+					}
+				}
+				if (username == null) {
 					throw new ValidationException("Basic auth requires username and password");
 				}
-				if (authRequest.password() == null || authRequest.password().trim().isEmpty()) {
+				if (password == null) {
 					throw new ValidationException("Basic auth requires username and password");
 				}
-				yield new LokiAuth("basic", null, authRequest.username().trim(), authRequest.password().trim());
+				yield new LokiAuth("basic", null, username, password);
 			}
 			default -> throw new ValidationException("Auth type must be one of: none, bearer, basic");
 		};
+	}
+
+	private String normalizeOptional(String value) {
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
+		return trimmed.isEmpty() ? null : trimmed;
 	}
 
 	private int validatePollIntervalSeconds(Integer pollIntervalSeconds) {
@@ -224,6 +277,20 @@ public class LokiConnectorService {
 		int sampleCount,
 		int latencyMs,
 		String message
+	) {
+	}
+
+	public record ConnectorConfiguration(
+		boolean configured,
+		String id,
+		String type,
+		String status,
+		String endpoint,
+		String tenantId,
+		LokiAuth auth,
+		String query,
+		Integer pollIntervalSeconds,
+		Instant updatedAt
 	) {
 	}
 

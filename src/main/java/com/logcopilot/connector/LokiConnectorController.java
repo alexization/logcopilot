@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,6 +25,34 @@ public class LokiConnectorController {
 
 	public LokiConnectorController(LokiConnectorService lokiConnectorService) {
 		this.lokiConnectorService = lokiConnectorService;
+	}
+
+	@GetMapping
+	public ConnectorConfigurationResponse getLokiConnector(
+		@PathVariable("project_id") String projectId
+	) {
+		LokiConnectorService.ConnectorConfiguration configuration = lokiConnectorService.getConfiguration(projectId);
+		return new ConnectorConfigurationResponse(new ConnectorConfigurationData(
+			configuration.configured(),
+			configuration.id(),
+			configuration.type(),
+			configuration.status(),
+			configuration.endpoint(),
+			configuration.tenantId(),
+			configuration.auth() == null
+				? new ConnectorAuthData("none", null, null, null, false, false)
+				: new ConnectorAuthData(
+					configuration.auth().type(),
+					null,
+					configuration.auth().username(),
+					null,
+					configuration.auth().token() != null && !configuration.auth().token().isBlank(),
+					configuration.auth().password() != null && !configuration.auth().password().isBlank()
+				),
+			configuration.query(),
+			configuration.pollIntervalSeconds(),
+			configuration.updatedAt()
+		));
 	}
 
 	@PostMapping
@@ -88,6 +117,39 @@ public class LokiConnectorController {
 	}
 
 	public record ConnectorResponse(ConnectorData data) {
+	}
+
+	public record ConnectorConfigurationResponse(ConnectorConfigurationData data) {
+	}
+
+	public record ConnectorConfigurationData(
+		boolean configured,
+		String id,
+		String type,
+		String status,
+		String endpoint,
+		@JsonProperty("tenant_id")
+		String tenantId,
+		@JsonProperty("auth")
+		ConnectorAuthData auth,
+		String query,
+		@JsonProperty("poll_interval_seconds")
+		Integer pollIntervalSeconds,
+		@JsonProperty("updated_at")
+		Instant updatedAt
+	) {
+	}
+
+	public record ConnectorAuthData(
+		String type,
+		String token,
+		String username,
+		String password,
+		@JsonProperty("token_configured")
+		boolean tokenConfigured,
+		@JsonProperty("password_configured")
+		boolean passwordConfigured
+	) {
 	}
 
 	public record ConnectorData(

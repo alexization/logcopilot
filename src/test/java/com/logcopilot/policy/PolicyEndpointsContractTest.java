@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -42,6 +43,59 @@ class PolicyEndpointsContractTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.level").value("level1_byom_only"))
 			.andExpect(jsonPath("$.data.updated_at").isString());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/policies/export 는 현재 export 정책을 반환한다")
+	void getExportPolicyReturnsCurrentPolicy() throws Exception {
+		String projectId = createProjectId("policy-export-get");
+
+		mockMvc.perform(put("/v1/projects/{project_id}/policies/export", projectId)
+				.header("Authorization", "Bearer policy-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(exportRequestBody("level2_byom_with_telemetry")))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/policies/export", projectId)
+				.header("Authorization", "Bearer policy-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(true))
+			.andExpect(jsonPath("$.data.level").value("level2_byom_with_telemetry"))
+			.andExpect(jsonPath("$.data.updated_at").isString());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/policies/export 는 미설정 시 기본 정책을 반환한다")
+	void getExportPolicyReturnsDefaultWhenMissing() throws Exception {
+		String projectId = createProjectId("policy-export-get-default");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/policies/export", projectId)
+				.header("Authorization", "Bearer policy-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(false))
+			.andExpect(jsonPath("$.data.level").value("level1_byom_only"))
+			.andExpect(jsonPath("$.data.updated_at").isEmpty());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/policies/export 는 인증 누락 시 401을 반환한다")
+	void getExportPolicyRejectsMissingBearerToken() throws Exception {
+		String projectId = createProjectId("policy-export-get-auth");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/policies/export", projectId))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/policies/export 는 프로젝트가 없으면 400을 반환한다")
+	void getExportPolicyReturns400WhenProjectMissing() throws Exception {
+		mockMvc.perform(get("/v1/projects/{project_id}/policies/export", "missing-project")
+				.header("Authorization", "Bearer policy-token"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("Project not found"));
 	}
 
 	@Test
@@ -105,6 +159,72 @@ class PolicyEndpointsContractTest {
 			.andExpect(jsonPath("$.data.enabled").value(true))
 			.andExpect(jsonPath("$.data.rules_count").value(2))
 			.andExpect(jsonPath("$.data.updated_at").isString());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/policies/redaction 는 현재 redaction 정책을 반환한다")
+	void getRedactionPolicyReturnsCurrentPolicy() throws Exception {
+		String projectId = createProjectId("policy-redaction-get");
+
+		mockMvc.perform(put("/v1/projects/{project_id}/policies/redaction", projectId)
+				.header("Authorization", "Bearer policy-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(redactionRequestBody(
+					true,
+					"""
+					[
+					  {"name":"token","pattern":"token=[^ ]+","replace_with":"token=[REDACTED]"}
+					]
+					"""
+				)))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v1/projects/{project_id}/policies/redaction", projectId)
+				.header("Authorization", "Bearer policy-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(true))
+			.andExpect(jsonPath("$.data.enabled").value(true))
+			.andExpect(jsonPath("$.data.rules_count").value(1))
+			.andExpect(jsonPath("$.data.rules[0].name").value("token"))
+			.andExpect(jsonPath("$.data.rules[0].pattern").value("token=[^ ]+"))
+			.andExpect(jsonPath("$.data.rules[0].replace_with").value("token=[REDACTED]"))
+			.andExpect(jsonPath("$.data.updated_at").isString());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/policies/redaction 는 미설정 시 기본 정책을 반환한다")
+	void getRedactionPolicyReturnsDefaultWhenMissing() throws Exception {
+		String projectId = createProjectId("policy-redaction-get-default");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/policies/redaction", projectId)
+				.header("Authorization", "Bearer policy-token"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.configured").value(false))
+			.andExpect(jsonPath("$.data.enabled").value(true))
+			.andExpect(jsonPath("$.data.rules_count").value(0))
+			.andExpect(jsonPath("$.data.rules").isArray())
+			.andExpect(jsonPath("$.data.updated_at").isEmpty());
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/policies/redaction 는 인증 누락 시 401을 반환한다")
+	void getRedactionPolicyRejectsMissingBearerToken() throws Exception {
+		String projectId = createProjectId("policy-redaction-get-auth");
+
+		mockMvc.perform(get("/v1/projects/{project_id}/policies/redaction", projectId))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.error.code").value("unauthorized"))
+			.andExpect(jsonPath("$.error.message").value("Missing or invalid bearer token"));
+	}
+
+	@Test
+	@DisplayName("GET /v1/projects/{project_id}/policies/redaction 는 프로젝트가 없으면 400을 반환한다")
+	void getRedactionPolicyReturns400WhenProjectMissing() throws Exception {
+		mockMvc.perform(get("/v1/projects/{project_id}/policies/redaction", "missing-project")
+				.header("Authorization", "Bearer policy-token"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("Project not found"));
 	}
 
 	@Test
@@ -175,6 +295,27 @@ class PolicyEndpointsContractTest {
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.error.code").value("bad_request"))
 			.andExpect(jsonPath("$.error.message").value("rules[0].pattern must be at most 512 characters"));
+	}
+
+	@Test
+	@DisplayName("PUT /v1/projects/{project_id}/policies/redaction 는 중첩 quantifier 정규식을 거부한다")
+	void updateRedactionPolicyReturns400WhenNestedQuantifierDetected() throws Exception {
+		String projectId = createProjectId("policy-redaction-nested-quantifier");
+
+		mockMvc.perform(put("/v1/projects/{project_id}/policies/redaction", projectId)
+				.header("Authorization", "Bearer policy-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(redactionRequestBody(
+					true,
+					"""
+					[
+					  {"name":"nested","pattern":"(a+)+","replace_with":"[MASKED]"}
+					]
+					"""
+				)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.error.code").value("bad_request"))
+			.andExpect(jsonPath("$.error.message").value("rules[0].pattern contains disallowed nested quantifier"));
 	}
 
 	private String createProjectId(String namePrefix) throws Exception {

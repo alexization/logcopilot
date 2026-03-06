@@ -176,7 +176,7 @@ public class AlertService {
 			throw new ValidationException("Request body must not be null");
 		}
 
-		String webhookUrl = validateWebhookUrl(command.webhookUrl());
+		String webhookUrl = resolveSlackWebhookUrl(projectId, command.webhookUrl());
 		String channel = requireNonBlank(command.channel(), "channel must not be blank");
 		double minConfidence = normalizeMinConfidence(command.minConfidence());
 
@@ -215,7 +215,7 @@ public class AlertService {
 
 		String from = validateEmail(command.from(), "from must be a valid email");
 		List<String> recipients = validateRecipients(command.recipients());
-		SmtpConfig smtp = validateSmtp(command.smtp());
+		SmtpConfig smtp = validateSmtp(projectId, command.smtp());
 		double minConfidence = normalizeMinConfidence(command.minConfidence());
 
 		ConfigureResult result = upsertChannel(
@@ -243,6 +243,72 @@ public class AlertService {
 		);
 		persistState();
 		return result;
+	}
+
+	public synchronized SlackChannelView getSlackChannel(String projectId) {
+		requireProjectForRead(projectId);
+		AlertChannelState channel = channelState(projectId, "slack");
+		if (channel == null || !(channel.config() instanceof SlackConfig config)) {
+			return new SlackChannelView(
+				false,
+				null,
+				"slack",
+				false,
+				null,
+				null,
+				false,
+				DEFAULT_MIN_CONFIDENCE,
+				null
+			);
+		}
+		return new SlackChannelView(
+			true,
+			channel.id(),
+			"slack",
+			channel.enabled(),
+			null,
+			config.channel(),
+			config.webhookUrl() != null && !config.webhookUrl().isBlank(),
+			config.minConfidence(),
+			channel.updatedAt()
+		);
+	}
+
+	public synchronized EmailChannelView getEmailChannel(String projectId) {
+		requireProjectForRead(projectId);
+		AlertChannelState channel = channelState(projectId, "email");
+		if (channel == null || !(channel.config() instanceof EmailConfig config)) {
+			return new EmailChannelView(
+				false,
+				null,
+				"email",
+				false,
+				null,
+				List.of(),
+				new SmtpView(null, null, null, null, false, true),
+				DEFAULT_MIN_CONFIDENCE,
+				null
+			);
+		}
+		SmtpConfig smtp = config.smtp();
+		return new EmailChannelView(
+			true,
+			channel.id(),
+			"email",
+			channel.enabled(),
+			config.from(),
+			config.recipients(),
+			new SmtpView(
+				smtp == null ? null : smtp.host(),
+				smtp == null ? null : smtp.port(),
+				smtp == null ? null : smtp.username(),
+				null,
+				smtp != null && smtp.password() != null && !smtp.password().isBlank(),
+				smtp == null || smtp.starttls()
+			),
+			config.minConfidence(),
+			channel.updatedAt()
+		);
 	}
 
 	public synchronized AlertDispatchResult dispatchIncidentAlert(
@@ -370,6 +436,14 @@ public class AlertService {
 	private boolean hasEnabledChannel(String projectId) {
 		Map<String, AlertChannelState> channels = channelsByProject.getOrDefault(projectId, Map.of());
 		return channels.values().stream().anyMatch(AlertChannelState::enabled);
+	}
+
+	private AlertChannelState channelState(String projectId, String type) {
+		Map<String, AlertChannelState> channels = channelsByProject.get(projectId);
+		if (channels == null) {
+			return null;
+		}
+		return channels.get(type);
 	}
 
 	private DispatchIncidentAlertCommand normalizeDispatchCommandForFailure(DispatchIncidentAlertCommand command) {
@@ -580,10 +654,25 @@ public class AlertService {
 		}
 	}
 
+	private String resolveSlackWebhookUrl(String projectId, String webhookUrl) {
+		String normalized = normalizeOptional(webhookUrl);
+		if (normalized != null) {
+			return validateWebhookUrl(normalized);
+		}
+
+		AlertChannelState existing = channelState(projectId, "slack");
+		if (existing != null && existing.config() instanceof SlackConfig config) {
+			String existingWebhook = normalizeOptional(config.webhookUrl());
+			if (existingWebhook != null) {
+				return existingWebhook;
+			}
+		}
+		throw new ValidationException("webhook_url must be a valid URI");
+	}
+
 	private String validateWebhookUrl(String webhookUrl) {
-		String normalized = requireNonBlank(webhookUrl, "webhook_url must be a valid URI");
 		try {
-			URI uri = new URI(normalized);
+			URI uri = new URI(webhookUrl);
 			if (!uri.isAbsolute() || uri.getHost() == null) {
 				throw new ValidationException("webhook_url must be a valid URI");
 			}
@@ -594,7 +683,7 @@ public class AlertService {
 		} catch (URISyntaxException exception) {
 			throw new ValidationException("webhook_url must be a valid URI");
 		}
-		return normalized;
+		return webhookUrl;
 	}
 
 	private String validateEmail(String email, String message) {
@@ -620,7 +709,7 @@ public class AlertService {
 		return List.copyOf(normalized);
 	}
 
-	private SmtpConfig validateSmtp(SmtpCommand smtp) {
+	private SmtpConfig validateSmtp(String projectId, SmtpCommand smtp) {
 		if (smtp == null) {
 			throw new ValidationException("smtp must not be null");
 		}
@@ -632,9 +721,23 @@ public class AlertService {
 		}
 
 		String username = requireNonBlank(smtp.username(), "smtp.username must not be blank");
-		String password = requireNonBlank(smtp.password(), "smtp.password must not be blank");
+		String password = normalizeOptional(smtp.password());
+		if (password == null) {
+			password = existingEmailSmtpPassword(projectId);
+		}
+		if (password == null) {
+			throw new ValidationException("smtp.password must not be blank");
+		}
 		boolean starttls = smtp.starttls() == null || smtp.starttls();
 		return new SmtpConfig(host, port, username, password, starttls);
+	}
+
+	private String existingEmailSmtpPassword(String projectId) {
+		AlertChannelState existing = channelState(projectId, "email");
+		if (existing == null || !(existing.config() instanceof EmailConfig config) || config.smtp() == null) {
+			return null;
+		}
+		return normalizeOptional(config.smtp().password());
 	}
 
 	private double normalizeMinConfidence(Double minConfidence) {
@@ -740,6 +843,42 @@ public class AlertService {
 	public record ConfigureResult(
 		boolean created,
 		AlertChannel channel
+	) {
+	}
+
+	public record SlackChannelView(
+		boolean configured,
+		String id,
+		String type,
+		boolean enabled,
+		String webhookUrl,
+		String channel,
+		boolean webhookConfigured,
+		double minConfidence,
+		Instant updatedAt
+	) {
+	}
+
+	public record EmailChannelView(
+		boolean configured,
+		String id,
+		String type,
+		boolean enabled,
+		String from,
+		List<String> recipients,
+		SmtpView smtp,
+		double minConfidence,
+		Instant updatedAt
+	) {
+	}
+
+	public record SmtpView(
+		String host,
+		Integer port,
+		String username,
+		String password,
+		boolean passwordConfigured,
+		boolean starttls
 	) {
 	}
 
